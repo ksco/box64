@@ -261,6 +261,7 @@ GO("libtasn1.so.6", libtasn1)
 GO("libnettle.so.8", libnettle8)
 GO("libunistring.so.2", libunistring2)
 GO("libhogweed.so.6", libhogweed6)
+GO("libluajit-5.1.so.2", libluajit)
 
 #ifdef ANDROID
 GO("libc.so", libc)

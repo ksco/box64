@@ -660,6 +660,7 @@ set(WRAPPEDS
     "${BOX64_ROOT}/src/wrapped/wrappedlibnettle8.c"
     "${BOX64_ROOT}/src/wrapped/wrappedlibunistring2.c"
     "${BOX64_ROOT}/src/wrapped/wrappedlibhogweed6.c"
+    "${BOX64_ROOT}/src/wrapped/wrappedlibluajit.c"
 )
 endif()
 if(ANDROID)

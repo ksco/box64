@@ -625,6 +625,8 @@
 #() dFddd
 #() dFddp
 #() dFpii
+#() dFpid
+#() dFpip
 #() dFpdd
 #() dFppi
 #() dFppu
@@ -637,6 +639,8 @@
 #() lFipi
 #() lFipL
 #() lFlll
+#() lFpil
+#() lFpip
 #() lFpli
 #() lFpLu
 #() lFpLp
@@ -773,6 +777,7 @@
 #() vFEpiA
 #() vFEpup
 #() vFEpUp
+#() vFEppi
 #() vFEppp
 #() vFEppV
 #() vFEppA
@@ -4510,6 +4515,9 @@ wrappedlibice:
 - iFpp:
   - IceAddConnectionWatch
   - IceRemoveConnectionWatch
+wrappedlibluajit:
+- vFppi:
+  - lua_pushcclosure
 wrappedlibm:
 - iFv:
   - fegetround
@@ -4641,6 +4649,7 @@ wrappedlibpthread:
   - pthread_barrierattr_init
   - pthread_cond_broadcast
   - pthread_cond_destroy
+  - pthread_cond_signal
   - pthread_condattr_destroy
   - pthread_condattr_init
   - pthread_getattr_default_np
