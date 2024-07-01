@@ -17,7 +17,7 @@
 #include "librarian.h"
 #include "myalign.h"
 
-const char* libtiffName = "libtiff.so.5";
+const char* libtiffName = "libtiff.so.6";
 #define LIBNAME libtiff
 
 

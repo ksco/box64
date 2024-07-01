@@ -381,6 +381,7 @@ GO("libgnutls.so.30", gnutls)
 //GO("liblcms2.so.2", lcms2)
 GO("libmpg123.so.0", mpg123)
 GO("libtiff.so.5", libtiff)
+GO("libtiff.so.6", libtiff)
 GO("libxml2.so.2", xml2)
 #endif
 #ifdef TERMUX
