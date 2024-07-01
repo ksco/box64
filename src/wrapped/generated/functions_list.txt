@@ -4806,6 +4806,7 @@ wrappedlibssl3:
 - iFlpppp:
   - SSL_get_ex_new_index
 wrappedlibtasn1:
+wrappedlibtiff:
 wrappedlibtinfo:
 - iFpip:
   - tputs
