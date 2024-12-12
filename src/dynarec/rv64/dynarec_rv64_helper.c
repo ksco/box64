@@ -601,6 +601,10 @@ void jump_to_next(dynarec_rv64_t* dyn, uintptr_t ip, int reg, int ninst, int is3
 #else
     JALR((dyn->insts[ninst].x64.has_callret ? xRA : xZR), x2);
 #endif
+    // reinitialize sew after callret
+    if (dyn->insts[ninst].x64.has_callret && dyn->vector_sew != VECTOR_SEWNA) {
+        vector_vsetvli(dyn, ninst, x3, dyn->vector_sew, VECTOR_LMUL1, 1);
+    }
 }
 
 void ret_to_epilog(dynarec_rv64_t* dyn, int ninst, rex_t rex)
