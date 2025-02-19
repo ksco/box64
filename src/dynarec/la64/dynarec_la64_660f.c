@@ -52,11 +52,17 @@ uintptr_t dynarec64_660F(dynarec_la64_t* dyn, uintptr_t addr, uintptr_t ip, int 
     MAYUSE(eb2);
     MAYUSE(j64);
     #if STEP > 1
-    static const int8_t round_round[] = {
+    static const int8_t round_round_D[] = {
         0xE, // round to nearest with ties to even
         0x2, // round toward minus infinity
         0x6, // round toward plus infinity
         0xA  // round toward zero
+    };
+    static const int8_t round_round_S[] = {
+        0xD, // round to nearest with ties to even
+        0x1, // round toward minus infinity
+        0x5, // round toward plus infinity
+        0x9  // round toward zero
     };
 #endif
 
@@ -694,6 +700,52 @@ uintptr_t dynarec64_660F(dynarec_la64_t* dyn, uintptr_t addr, uintptr_t ip, int 
         case 0x3A: // these are some more SSSE3+ opcodes
             opcode = F8;
             switch (opcode) {
+                case 0x08:
+                    INST_NAME("ROUNDPS Gx, Ex, Ib");
+                    nextop = F8;
+                    GETEX(q1, 0, 1);
+                    GETGX_empty(q0);
+                    u8 = F8;
+                    v1 = fpu_get_scratch(dyn);
+                    if(u8&4) {
+                        u8 = sse_setround(dyn, ninst, x1, x2);
+                        VFRINT_S(q0, q1);
+                        x87_restoreround(dyn, ninst, u8);
+                    } else {
+                        VFRINTRRD(q0, q1, round_round_S[u8&3]);
+                    }
+                    break;
+                case 0x09:
+                    INST_NAME("ROUNDPD Gx, Ex, Ib");
+                    nextop = F8;
+                    GETEX(q1, 0, 1);
+                    GETGX_empty(q0);
+                    u8 = F8;
+                    v1 = fpu_get_scratch(dyn);
+                    if(u8&4) {
+                        u8 = sse_setround(dyn, ninst, x1, x2);
+                        VFRINT_D(q0, q1);
+                        x87_restoreround(dyn, ninst, u8);
+                    } else {
+                        VFRINTRRD(q0, q1, round_round_D[u8&3]);
+                    }
+                    break;
+                case 0x0A:
+                    INST_NAME("ROUNDSS Gx, Ex, Ib");
+                    nextop = F8;
+                    GETGX(q0, 1);
+                    GETEXSS(q1, 0, 1);
+                    u8 = F8;
+                    v1 = fpu_get_scratch(dyn);
+                    if (u8 & 4) {
+                        u8 = sse_setround(dyn, ninst, x1, x2);
+                        VFRINT_S(v1, q1);
+                        x87_restoreround(dyn, ninst, u8);
+                    } else {
+                        VFRINTRRD(v1, q1, round_round_S[u8 & 3]);
+                    }
+                    VEXTRINS_W(q0, v1, 0);
+                    break;
                 case 0x0B:
                     INST_NAME("ROUNDSD Gx, Ex, Ib");
                     nextop = F8;
@@ -706,7 +758,7 @@ uintptr_t dynarec64_660F(dynarec_la64_t* dyn, uintptr_t addr, uintptr_t ip, int 
                         VFRINT_D(v1, q1);
                         x87_restoreround(dyn, ninst, u8);
                     } else {
-                        VFRINTRRD_D(v1, q1, round_round[u8 & 3]);
+                        VFRINTRRD(v1, q1, round_round_D[u8 & 3]);
                     }
                     VEXTRINS_D(q0, v1, 0);
                     break;
@@ -1132,6 +1184,27 @@ uintptr_t dynarec64_660F(dynarec_la64_t* dyn, uintptr_t addr, uintptr_t ip, int 
                 VAND_V(v1, v0, v1);
                 VANDN_V(v0, v0, q1);
                 VOR_V(q1, v0, v1);
+            }
+            break;
+        case 0x5F:
+            INST_NAME("MAXPD Gx, Ex");
+            nextop = F8;
+            GETGX(v0, 1);
+            GETEX(v1, 0, 0);
+            // LoongArch FMIN/FMAX follow IEEE 754-2008 , it wll copy the none NaN value.
+            // If both NaN, then copy NaN.
+            // but x86 will copy the second if either v0[x] or v1[x] is NaN
+            if (!BOX64ENV(dynarec_fastnan) && v0 != v1) {
+                q0 = fpu_get_scratch(dyn);
+                q1 = fpu_get_scratch(dyn);
+                VFCMP_D(q0, v0, v0, cUN);  //vfcmp.cun.d will set 0xFFFFFFFFFFFFFFFF if NaN
+                VFCMP_D(q1, v1, v1, cUN);
+                VOR_V(q0, q0, q1);        // find all NaN
+                VFCMP_D(q1, v1, v0, cLT);  // vfcmp.clt.d will set 0xFFFFFFFFFFFFFFFF
+                VORN_V(q0, q0, q1);
+                VBITSEL_V(v0, v1, v0, q0);
+            } else {
+                VFMAX_D(v0, v0, v1);
             }
             break;
         case 0x60:
