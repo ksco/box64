@@ -29,13 +29,16 @@
 #include "elfloader.h"
 
 #define XMM0 0
-#define XMM8 16
-#define X870 8
-#define EMM0 8
+#define X870 XMM0 + 16
+#define EMM0 XMM0 + 16
 
 // Get a FPU scratch reg
 int fpu_get_scratch(dynarec_la64_t* dyn)
 {
+    // if(BOX64DRENV(dynarec_dump)) {
+    //     dynarec_log(LOG_NONE, 
+    //     "fpu_get_scratch, scratch=%d \n", SCRATCH0 + dyn->lsx.fpu_scratch +1);
+    // }
     return SCRATCH0 + dyn->lsx.fpu_scratch++; // return an Sx
 }
 // Reset scratch regs counter
@@ -43,7 +46,6 @@ void fpu_reset_scratch(dynarec_la64_t* dyn)
 {
     dyn->lsx.fpu_scratch = 0;
 }
-
 // Free a FPU double reg
 void fpu_free_reg(dynarec_la64_t* dyn, int reg)
 {
@@ -52,6 +54,20 @@ void fpu_free_reg(dynarec_la64_t* dyn, int reg)
     if (dyn->lsx.lsxcache[reg].t != LSX_CACHE_ST_F && dyn->lsx.lsxcache[reg].t != LSX_CACHE_ST_D && dyn->lsx.lsxcache[reg].t != LSX_CACHE_ST_I64)
         dyn->lsx.lsxcache[reg].v = 0;
 }
+
+// Get a x87 double reg
+int fpu_get_reg_x87(dynarec_la64_t* dyn, int t, int n)
+{
+    int i = X870;
+    while (dyn->lsx.fpuused[i])
+        ++i;
+    dyn->lsx.fpuused[i] = 1;
+    dyn->lsx.lsxcache[i].n = n;
+    dyn->lsx.lsxcache[i].t = t;
+    dyn->lsx.news |= (1 << i);
+    return i; // return a Dx
+}
+
 // Get an MMX double reg
 int fpu_get_reg_emm(dynarec_la64_t* dyn, int emm)
 {
@@ -62,15 +78,13 @@ int fpu_get_reg_emm(dynarec_la64_t* dyn, int emm)
     dyn->lsx.news |= (1 << (ret));
     return ret;
 }
+
 // Get an XMM quad reg
 int fpu_get_reg_xmm(dynarec_la64_t* dyn, int t, int xmm)
 {
     int i;
-    if (xmm > 7) {
-        i = XMM8 + xmm - 8;
-    } else {
-        i = XMM0 + xmm;
-    }
+    i = XMM0 + xmm;
+
     dyn->lsx.fpuused[i] = 1;
     dyn->lsx.lsxcache[i].t = t;
     dyn->lsx.lsxcache[i].n = xmm;
@@ -91,6 +105,223 @@ static void fpu_reset_reg_lsxcache(lsxcache_t* lsx)
 void fpu_reset_reg(dynarec_la64_t* dyn)
 {
     fpu_reset_reg_lsxcache(&dyn->lsx);
+}
+
+
+int lsxcache_no_i64(dynarec_la64_t* dyn, int ninst, int st, int a)
+{
+    if (a == LSX_CACHE_ST_I64) {
+        lsxcache_promote_double(dyn, ninst, st);
+        return LSX_CACHE_ST_D;
+    }
+    return a;
+}
+
+int lsxcache_get_st(dynarec_la64_t* dyn, int ninst, int a)
+{
+    if (dyn->insts[ninst].lsx.swapped) {
+        if (dyn->insts[ninst].lsx.combined1 == a)
+            a = dyn->insts[ninst].lsx.combined2;
+        else if (dyn->insts[ninst].lsx.combined2 == a)
+            a = dyn->insts[ninst].lsx.combined1;
+    }
+    for (int i = 0; i < 24; ++i)
+        if ((dyn->insts[ninst].lsx.lsxcache[i].t == LSX_CACHE_ST_F
+                || dyn->insts[ninst].lsx.lsxcache[i].t == LSX_CACHE_ST_D
+                || dyn->insts[ninst].lsx.lsxcache[i].t == LSX_CACHE_ST_I64)
+            && dyn->insts[ninst].lsx.lsxcache[i].n == a)
+            return dyn->insts[ninst].lsx.lsxcache[i].t;
+    // not in the cache yet, so will be fetched...
+    return LSX_CACHE_ST_D;
+}
+
+int lsxcache_get_current_st(dynarec_la64_t* dyn, int ninst, int a)
+{
+    (void)ninst;
+    if (!dyn->insts)
+        return LSX_CACHE_ST_D;
+    for (int i = 0; i < 24; ++i)
+        if ((dyn->lsx.lsxcache[i].t == LSX_CACHE_ST_F
+                || dyn->lsx.lsxcache[i].t == LSX_CACHE_ST_D
+                || dyn->lsx.lsxcache[i].t == LSX_CACHE_ST_I64)
+            && dyn->lsx.lsxcache[i].n == a)
+            return dyn->lsx.lsxcache[i].t;
+    // not in the cache yet, so will be fetched...
+    return LSX_CACHE_ST_D;
+}
+
+int lsxcache_get_st_f(dynarec_la64_t* dyn, int ninst, int a)
+{
+    for (int i = 0; i < 24; ++i)
+        if (dyn->insts[ninst].lsx.lsxcache[i].t == LSX_CACHE_ST_F
+            && dyn->insts[ninst].lsx.lsxcache[i].n == a)
+            return i;
+    return -1;
+}
+
+int lsxcache_get_st_f_i64(dynarec_la64_t* dyn, int ninst, int a)
+{
+    for (int i = 0; i < 24; ++i)
+        if ((dyn->insts[ninst].lsx.lsxcache[i].t == LSX_CACHE_ST_I64 || dyn->insts[ninst].lsx.lsxcache[i].t == LSX_CACHE_ST_F)
+            && dyn->insts[ninst].lsx.lsxcache[i].n == a)
+            return i;
+    return -1;
+}
+
+int lsxcache_get_st_f_noback(dynarec_la64_t* dyn, int ninst, int a)
+{
+    for (int i = 0; i < 24; ++i)
+        if (dyn->insts[ninst].lsx.lsxcache[i].t == LSX_CACHE_ST_F
+            && dyn->insts[ninst].lsx.lsxcache[i].n == a)
+            return i;
+    return -1;
+}
+
+int lsxcache_get_st_f_i64_noback(dynarec_la64_t* dyn, int ninst, int a)
+{
+    for (int i = 0; i < 24; ++i)
+        if ((dyn->insts[ninst].lsx.lsxcache[i].t == LSX_CACHE_ST_I64 || dyn->insts[ninst].lsx.lsxcache[i].t == LSX_CACHE_ST_F)
+            && dyn->insts[ninst].lsx.lsxcache[i].n == a)
+            return i;
+    return -1;
+}
+
+int lsxcache_get_current_st_f(dynarec_la64_t* dyn, int a)
+{
+    for (int i = 0; i < 24; ++i)
+        if (dyn->lsx.lsxcache[i].t == LSX_CACHE_ST_F
+            && dyn->lsx.lsxcache[i].n == a)
+            return i;
+    return -1;
+}
+
+int lsxcache_get_current_st_f_i64(dynarec_la64_t* dyn, int a)
+{
+    for (int i = 0; i < 24; ++i)
+        if ((dyn->lsx.lsxcache[i].t == LSX_CACHE_ST_I64 || dyn->lsx.lsxcache[i].t == LSX_CACHE_ST_F)
+            && dyn->lsx.lsxcache[i].n == a)
+            return i;
+    return -1;
+}
+
+static void lsxcache_promote_double_forward(dynarec_la64_t* dyn, int ninst, int maxinst, int a);
+static void lsxcache_promote_double_internal(dynarec_la64_t* dyn, int ninst, int maxinst, int a);
+static void lsxcache_promote_double_combined(dynarec_la64_t* dyn, int ninst, int maxinst, int a)
+{
+    if (a == dyn->insts[ninst].lsx.combined1 || a == dyn->insts[ninst].lsx.combined2) {
+        if (a == dyn->insts[ninst].lsx.combined1) {
+            a = dyn->insts[ninst].lsx.combined2;
+        } else
+            a = dyn->insts[ninst].lsx.combined1;
+        int i = lsxcache_get_st_f_i64_noback(dyn, ninst, a);
+        // if(BOX64DRENV(dynarec_dump)) dynarec_log(LOG_NONE, "lsxcache_promote_double_combined, ninst=%d combined%c %d i=%d (stack:%d/%d)\n", ninst, (a == dyn->insts[ninst].lsx.combined2)?'2':'1', a ,i, dyn->insts[ninst].lsx.stack_push, -dyn->insts[ninst].lsx.stack_pop);
+        if (i >= 0) {
+            dyn->insts[ninst].lsx.lsxcache[i].t = LSX_CACHE_ST_D;
+            if (!dyn->insts[ninst].lsx.barrier)
+                lsxcache_promote_double_internal(dyn, ninst - 1, maxinst, a - dyn->insts[ninst].lsx.stack_push);
+            // go forward is combined is not pop'd
+            if (a - dyn->insts[ninst].lsx.stack_pop >= 0)
+                if (!dyn->insts[ninst + 1].lsx.barrier)
+                    lsxcache_promote_double_forward(dyn, ninst + 1, maxinst, a - dyn->insts[ninst].lsx.stack_pop);
+        }
+    }
+}
+static void lsxcache_promote_double_internal(dynarec_la64_t* dyn, int ninst, int maxinst, int a)
+{
+    if (dyn->insts[ninst + 1].lsx.barrier)
+        return;
+    while (ninst >= 0) {
+        a += dyn->insts[ninst].lsx.stack_pop; // adjust Stack depth: add pop'd ST (going backward)
+        int i = lsxcache_get_st_f_i64(dyn, ninst, a);
+        // if(BOX64DRENV(dynarec_dump)) dynarec_log(LOG_NONE, "lsxcache_promote_double_internal, ninst=%d, a=%d st=%d:%d, i=%d\n", ninst, a, dyn->insts[ninst].lsx.stack, dyn->insts[ninst].lsx.stack_next, i);
+        if (i < 0) return;
+        dyn->insts[ninst].lsx.lsxcache[i].t = LSX_CACHE_ST_D;
+        // check combined propagation too
+        if (dyn->insts[ninst].lsx.combined1 || dyn->insts[ninst].lsx.combined2) {
+            if (dyn->insts[ninst].lsx.swapped) {
+                // if(BOX64DRENV(dynarec_dump)) dynarec_log(LOG_NONE, "lsxcache_promote_double_internal, ninst=%d swapped %d/%d vs %d with st %d\n", ninst, dyn->insts[ninst].lsx.combined1 ,dyn->insts[ninst].lsx.combined2, a, dyn->insts[ninst].lsx.stack);
+                if (a == dyn->insts[ninst].lsx.combined1)
+                    a = dyn->insts[ninst].lsx.combined2;
+                else if (a == dyn->insts[ninst].lsx.combined2)
+                    a = dyn->insts[ninst].lsx.combined1;
+            } else {
+                // if(BOX64DRENV(dynarec_dump)) dynarec_log(LOG_NONE, "lsxcache_promote_double_internal, ninst=%d combined %d/%d vs %d with st %d\n", ninst, dyn->insts[ninst].lsx.combined1 ,dyn->insts[ninst].lsx.combined2, a, dyn->insts[ninst].lsx.stack);
+                lsxcache_promote_double_combined(dyn, ninst, maxinst, a);
+            }
+        }
+        a -= dyn->insts[ninst].lsx.stack_push; // // adjust Stack depth: remove push'd ST (going backward)
+        --ninst;
+        if (ninst < 0 || a < 0 || dyn->insts[ninst].lsx.barrier)
+            return;
+    }
+}
+
+static void lsxcache_promote_double_forward(dynarec_la64_t* dyn, int ninst, int maxinst, int a)
+{
+    while ((ninst != -1) && (ninst < maxinst) && (a >= 0)) {
+        a += dyn->insts[ninst].lsx.stack_push; // // adjust Stack depth: add push'd ST (going forward)
+        if ((dyn->insts[ninst].lsx.combined1 || dyn->insts[ninst].lsx.combined2) && dyn->insts[ninst].lsx.swapped) {
+            // if(BOX64DRENV(dynarec_dump)) dynarec_log(LOG_NONE, "lsxcache_promote_double_forward, ninst=%d swapped %d/%d vs %d with st %d\n", ninst, dyn->insts[ninst].lsx.combined1 ,dyn->insts[ninst].lsx.combined2, a, dyn->insts[ninst].lsx.stack);
+            if (a == dyn->insts[ninst].lsx.combined1)
+                a = dyn->insts[ninst].lsx.combined2;
+            else if (a == dyn->insts[ninst].lsx.combined2)
+                a = dyn->insts[ninst].lsx.combined1;
+        }
+        int i = lsxcache_get_st_f_i64_noback(dyn, ninst, a);
+        // if(BOX64DRENV(dynarec_dump)) dynarec_log(LOG_NONE, "lsxcache_promote_double_forward, ninst=%d, a=%d st=%d:%d(%d/%d), i=%d\n", ninst, a, dyn->insts[ninst].lsx.stack, dyn->insts[ninst].lsx.stack_next, dyn->insts[ninst].lsx.stack_push, -dyn->insts[ninst].lsx.stack_pop, i);
+        if (i < 0) return;
+        dyn->insts[ninst].lsx.lsxcache[i].t = LSX_CACHE_ST_D;
+        // check combined propagation too
+        if ((dyn->insts[ninst].lsx.combined1 || dyn->insts[ninst].lsx.combined2) && !dyn->insts[ninst].lsx.swapped) {
+            // if(BOX64DRENV(dynarec_dump)) dynarec_log(LOG_NONE, "lsxcache_promote_double_forward, ninst=%d combined %d/%d vs %d with st %d\n", ninst, dyn->insts[ninst].lsx.combined1 ,dyn->insts[ninst].lsx.combined2, a, dyn->insts[ninst].lsx.stack);
+            lsxcache_promote_double_combined(dyn, ninst, maxinst, a);
+        }
+        a -= dyn->insts[ninst].lsx.stack_pop; // adjust Stack depth: remove pop'd ST (going forward)
+        if (dyn->insts[ninst].x64.has_next && !dyn->insts[ninst].lsx.barrier)
+            ++ninst;
+        else
+            ninst = -1;
+    }
+    if (ninst == maxinst)
+        lsxcache_promote_double(dyn, ninst, a);
+}
+
+void lsxcache_promote_double(dynarec_la64_t* dyn, int ninst, int a)
+{
+    int i = lsxcache_get_current_st_f_i64(dyn, a);
+    // if(BOX64DRENV(dynarec_dump)) dynarec_log(LOG_NONE, "lsxcache_promote_double, ninst=%d a=%d st=%d i=%d\n", ninst, a, dyn->lsx.stack, i);
+    if (i < 0) return;
+    dyn->lsx.lsxcache[i].t = LSX_CACHE_ST_D;
+    dyn->insts[ninst].lsx.lsxcache[i].t = LSX_CACHE_ST_D;
+    // check combined propagation too
+    if (dyn->lsx.combined1 || dyn->lsx.combined2) {
+        if (dyn->lsx.swapped) {
+            // if(BOX64DRENV(dynarec_dump)) dynarec_log(LOG_NONE, "lsxcache_promote_double, ninst=%d swapped! %d/%d vs %d\n", ninst, dyn->lsx.combined1 ,dyn->lsx.combined2, a);
+            if (dyn->lsx.combined1 == a)
+                a = dyn->lsx.combined2;
+            else if (dyn->lsx.combined2 == a)
+                a = dyn->lsx.combined1;
+        } else {
+            // if(BOX64DRENV(dynarec_dump)) dynarec_log(LOG_NONE, "lsxcache_promote_double, ninst=%d combined! %d/%d vs %d\n", ninst, dyn->lsx.combined1 ,dyn->lsx.combined2, a);
+            if (dyn->lsx.combined1 == a)
+                lsxcache_promote_double(dyn, ninst, dyn->lsx.combined2);
+            else if (dyn->lsx.combined2 == a)
+                lsxcache_promote_double(dyn, ninst, dyn->lsx.combined1);
+        }
+    }
+    a -= dyn->insts[ninst].lsx.stack_push; // // adjust Stack depth: remove push'd ST (going backward)
+    if (!ninst || a < 0) return;
+    lsxcache_promote_double_internal(dyn, ninst - 1, ninst, a);
+}
+
+int lsxcache_combine_st(dynarec_la64_t* dyn, int ninst, int a, int b)
+{
+    dyn->lsx.combined1 = a;
+    dyn->lsx.combined2 = b;
+    if (lsxcache_get_current_st(dyn, ninst, a) == LSX_CACHE_ST_F
+        && lsxcache_get_current_st(dyn, ninst, b) == LSX_CACHE_ST_F)
+        return LSX_CACHE_ST_F;
+    return LSX_CACHE_ST_D;
 }
 
 static int isCacheEmpty(dynarec_native_t* dyn, int ninst)
@@ -165,7 +396,9 @@ void lsxcacheUnwind(lsxcache_t* cache)
         int a = -1;
         int b = -1;
         for (int j = 0; j < 24 && ((a == -1) || (b == -1)); ++j)
-            if ((cache->lsxcache[j].t == LSX_CACHE_ST_D || cache->lsxcache[j].t == LSX_CACHE_ST_F || cache->lsxcache[j].t == LSX_CACHE_ST_I64)) {
+            if ((cache->lsxcache[j].t == LSX_CACHE_ST_D 
+                    || cache->lsxcache[j].t == LSX_CACHE_ST_F 
+                    || cache->lsxcache[j].t == LSX_CACHE_ST_I64)) {
                 if (cache->lsxcache[j].n == cache->combined1)
                     a = j;
                 else if (cache->lsxcache[j].n == cache->combined2)
@@ -189,7 +422,9 @@ void lsxcacheUnwind(lsxcache_t* cache)
     if (cache->stack_push) {
         // unpush
         for (int j = 0; j < 24; ++j) {
-            if ((cache->lsxcache[j].t == LSX_CACHE_ST_D || cache->lsxcache[j].t == LSX_CACHE_ST_F || cache->lsxcache[j].t == LSX_CACHE_ST_I64)) {
+            if ((cache->lsxcache[j].t == LSX_CACHE_ST_D 
+                    || cache->lsxcache[j].t == LSX_CACHE_ST_F 
+                    || cache->lsxcache[j].t == LSX_CACHE_ST_I64)) {
                 if (cache->lsxcache[j].n < cache->stack_push)
                     cache->lsxcache[j].v = 0;
                 else
@@ -202,7 +437,7 @@ void lsxcacheUnwind(lsxcache_t* cache)
         if (cache->pushed >= cache->stack_push)
             cache->pushed -= cache->stack_push;
         else
-            cache->pushed = 0;
+            cache->pushed = 0;        
         cache->stack_push = 0;
     }
     cache->x87stack += cache->stack_pop;
@@ -213,7 +448,7 @@ void lsxcacheUnwind(lsxcache_t* cache)
         else
             cache->poped = 0;
         cache->tags <<= (cache->stack_pop * 2);
-    }
+    }    
     cache->stack_pop = 0;
     cache->barrier = 0;
     // And now, rebuild the x87cache info with lsxcache
@@ -483,6 +718,7 @@ void print_opcode(dynarec_native_t* dyn, int ninst, uint32_t opcode)
     dynarec_log_prefix(0, LOG_NONE, "\t%08x\t%s\n", opcode, la64_print(opcode, (uintptr_t)dyn->block));
 }
 
+// x87 stuffs
 static void x87_reset(lsxcache_t* lsx)
 {
     for (int i = 0; i < 8; ++i)
@@ -529,9 +765,15 @@ void fpu_reset(dynarec_la64_t* dyn)
 
 void fpu_reset_ninst(dynarec_la64_t* dyn, int ninst)
 {
-    // TODO: x87 and mmx
+    x87_reset(&dyn->insts[ninst].lsx);
+    mmx_reset(&dyn->insts[ninst].lsx);
     sse_reset(&dyn->insts[ninst].lsx);
     fpu_reset_reg_lsxcache(&dyn->insts[ninst].lsx);
+}
+
+int fpu_is_st_freed(dynarec_la64_t* dyn, int ninst, int st)
+{
+    return (dyn->lsx.tags & (0b11 << (st * 2))) ? 1 : 0;
 }
 
 void fpu_save_and_unwind(dynarec_la64_t* dyn, int ninst, lsxcache_t* cache)

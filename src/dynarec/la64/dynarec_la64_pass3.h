@@ -1,7 +1,7 @@
 #define INIT
-#define FINI                                                                                                \
-    if (ninst)                                                                                              \
-        addInst(dyn->instsize, &dyn->insts_size, dyn->insts[ninst-1].x64.size, dyn->insts[ninst-1].size/4); \
+#define FINI                                                                                                      \
+    if (ninst)                                                                                                    \
+        addInst(dyn->instsize, &dyn->insts_size, dyn->insts[ninst - 1].x64.size, dyn->insts[ninst - 1].size / 4); \
     addInst(dyn->instsize, &dyn->insts_size, 0, 0);
 #define EMIT(A)                                                                \
     do {                                                                       \
@@ -15,10 +15,10 @@
 
 #define MESSAGE(A, ...) \
     if (BOX64DRENV(dynarec_dump)) dynarec_log(LOG_NONE, __VA_ARGS__)
-#define NEW_INST \
-    if (ninst) {  \
+#define NEW_INST                                                                                                  \
+    if (ninst) {                                                                                                  \
         addInst(dyn->instsize, &dyn->insts_size, dyn->insts[ninst - 1].x64.size, dyn->insts[ninst - 1].size / 4); \
-        dyn->insts[ninst].ymm0_pass3 = dyn->ymm_zero; \
+        dyn->insts[ninst].ymm0_pass3 = dyn->ymm_zero;                                                             \
     }
 #define INST_EPILOG
 #define INST_NAME(name) inst_name_pass3(dyn, ninst, name, rex)
@@ -28,4 +28,13 @@
         MESSAGE(LOG_DUMP, "  Table64: 0x%lx\n", (V)); \
         PCADDU12I(A, SPLIT20(val64offset));           \
         LD_D(A, A, SPLIT12(val64offset));             \
+    }
+
+#define FTABLE64(A, V)                              \
+    {                                               \
+        mmx87_regs_t v = { .d = V };                \
+        int val64offset = Table64(dyn, v.q, 3);     \
+        MESSAGE(LOG_DUMP, "  FTable64: %g\n", v.d); \
+        PCADDU12I(x1, SPLIT20(val64offset));            \
+        FLD_D(A, x1, SPLIT12(val64offset));           \
     }

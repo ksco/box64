@@ -24,7 +24,7 @@
 #define F16S    *(int16_t*)(addr += 2, addr - 2)
 #define F32     *(uint32_t*)(addr += 4, addr - 4)
 #define F32S    *(int32_t*)(addr += 4, addr - 4)
-#define F32S64  (uint64_t)(int64_t) F32S
+#define F32S64  (uint64_t)(int64_t)F32S
 #define F64     *(uint64_t*)(addr += 8, addr - 8)
 #define PK(a)   *(uint8_t*)(addr + a)
 #define PK16(a) *(uint16_t*)(addr + a)
@@ -437,13 +437,17 @@
 
 // CALL will use x6 for the call address. Return value can be put in ret (unless ret is -1)
 // R0 will not be pushed/popd if ret is -2
-#define CALL(F, ret) call_c(dyn, ninst, F, x6, ret, 1, 0)
+#define CALL(F, ret)                          call_c(dyn, ninst, F, x6, ret, 1, 0, 0, 0, 0, 0, 0, 0)
+#define CALL2(F, ret, x1, x2)                 call_c(dyn, ninst, F, x6, ret, 1, 0, x1, x2, 0, 0, 0, 0)
+#define CALL4(F, ret, x1, x2, x3, x4)         call_c(dyn, ninst, F, x6, ret, 1, 0, x1, x2, x3, x4, 0, 0)
+#define CALL6(F, ret, x1, x2, x3, x4, x5, x6) call_c(dyn, ninst, F, x6, ret, 1, 0, x1, x2, x3, x4, x5, x6)
 // CALL_ will use x6 for the call address. Return value can be put in ret (unless ret is -1)
 // R0 will not be pushed/popd if ret is -2
-#define CALL_(F, ret, reg) call_c(dyn, ninst, F, x6, ret, 1, reg)
+#define CALL_(F, ret, reg) call_c(dyn, ninst, F, x6, ret, 1, reg, 0, 0, 0, 0, 0, 0)
+#define CALL_2(F, ret, reg, x1, x2) call_c(dyn, ninst, F, x6, ret, 1, reg, x1, x2, 0, 0, 0, 0)
 // CALL_S will use x6 for the call address. Return value can be put in ret (unless ret is -1)
 // R0 will not be pushed/popd if ret is -2. Flags are not save/restored
-#define CALL_S(F, ret) call_c(dyn, ninst, F, x6, ret, 0, 0)
+#define CALL_S(F, ret) call_c(dyn, ninst, F, x6, ret, 0, 0, 0, 0, 0, 0, 0, 0)
 
 #define MARKi(i)    dyn->insts[ninst].mark[i] = dyn->native_size
 #define GETMARKi(i) dyn->insts[ninst].mark[i]
@@ -505,6 +509,8 @@
 #define BEQZ_MARK(reg) BxxZ_gen(EQ, MARK, reg)
 // Branch to MARK2 if reg1==0 (use j64)
 #define BEQZ_MARK2(reg) BxxZ_gen(EQ, MARK2, reg)
+// Branch to MARK3 if reg1==0 (use j64)
+#define BEQZ_MARK3(reg) BxxZ_gen(EQ, MARK2, reg)
 // Branch to MARKLOCK if reg1==0 (use j64)
 #define BEQZ_MARKLOCK(reg) BxxZ_gen(EQ, MARKLOCK, reg)
 // Branch to MARKLOCK2 if reg1==0 (use j64)
@@ -549,6 +555,10 @@
 #define BLTU_MARK(reg1, reg2) Bxx_gen(LTU, MARK, reg1, reg2)
 // Branch to MARK if reg1>=reg2 (use j64)
 #define BGE_MARK(reg1, reg2) Bxx_gen(GE, MARK, reg1, reg2)
+// Branch to MARK if reg1>=reg2 (use j64)
+#define BGE_MARK2(reg1, reg2) Bxx_gen(GE, MARK2, reg1, reg2)
+// Branch to MARK if reg1>=reg2 (use j64)
+#define BGE_MARK3(reg1, reg2) Bxx_gen(GE, MARK3, reg1, reg2)
 
 // Branch to MARK instruction unconditionnal (use j64)
 #define B_MARK_nocond Bxx_gen(__, MARK, 0, 0)
@@ -629,6 +639,36 @@
     LOAD_REG(R13);      \
     LOAD_REG(R14);      \
     LOAD_REG(R15);
+
+#if STEP == 0
+#define X87_PUSH_OR_FAIL(var, dyn, ninst, scratch, t) var = x87_do_push(dyn, ninst, scratch, t)
+#define X87_PUSH_EMPTY_OR_FAIL(dyn, ninst, scratch)   x87_do_push_empty(dyn, ninst, scratch)
+#define X87_POP_OR_FAIL(dyn, ninst, scratch)          x87_do_pop(dyn, ninst, scratch)
+#else
+#define X87_PUSH_OR_FAIL(var, dyn, ninst, scratch, t)                                                                                                              \
+    if ((dyn->lsx.x87stack == 8) || (dyn->lsx.pushed == 8)) {                                                                                                      \
+        if (BOX64DRENV(dynarec_dump)) dynarec_log(LOG_NONE, " Warning, suspicious x87 Push, stack=%d/%d on inst %d\n", dyn->lsx.x87stack, dyn->lsx.pushed, ninst); \
+        dyn->abort = 1;                                                                                                                                            \
+        return addr;                                                                                                                                               \
+    }                                                                                                                                                              \
+    var = x87_do_push(dyn, ninst, scratch, t);
+
+#define X87_PUSH_EMPTY_OR_FAIL(dyn, ninst, scratch)                                                                                                                \
+    if ((dyn->lsx.x87stack == 8) || (dyn->lsx.pushed == 8)) {                                                                                                      \
+        if (BOX64DRENV(dynarec_dump)) dynarec_log(LOG_NONE, " Warning, suspicious x87 Push, stack=%d/%d on inst %d\n", dyn->lsx.x87stack, dyn->lsx.pushed, ninst); \
+        dyn->abort = 1;                                                                                                                                            \
+        return addr;                                                                                                                                               \
+    }                                                                                                                                                              \
+    x87_do_push_empty(dyn, ninst, scratch);
+
+#define X87_POP_OR_FAIL(dyn, ninst, scratch)                                                                                                                     \
+    if ((dyn->lsx.x87stack == -8) || (dyn->lsx.poped == 8)) {                                                                                                    \
+        if (BOX64DRENV(dynarec_dump)) dynarec_log(LOG_NONE, " Warning, suspicious x87 Pop, stack=%d/%d on inst %d\n", dyn->lsx.x87stack, dyn->lsx.poped, ninst); \
+        dyn->abort = 1;                                                                                                                                          \
+        return addr;                                                                                                                                             \
+    }                                                                                                                                                            \
+    x87_do_pop(dyn, ninst, scratch);
+#endif
 
 #define SET_DFNONE()                                 \
     do {                                             \
@@ -806,6 +846,9 @@
 #ifndef TABLE64
 #define TABLE64(A, V)
 #endif
+#ifndef FTABLE64
+#define FTABLE64(A, V)
+#endif
 
 #define ARCH_INIT() SMSTART()
 
@@ -877,6 +920,14 @@ void* la64_next(x64emu_t* emu, uintptr_t addr);
 #define dynarec64_660F   STEPNAME(dynarec64_660F)
 #define dynarec64_66F0   STEPNAME(dynarec64_66F0)
 #define dynarec64_66F20F STEPNAME(dynarec64_66F20F)
+#define dynarec64_D8     STEPNAME(dynarec64_D8)
+#define dynarec64_D9     STEPNAME(dynarec64_D9)
+#define dynarec64_DA     STEPNAME(dynarec64_DA)
+#define dynarec64_DB     STEPNAME(dynarec64_DB)
+#define dynarec64_DC     STEPNAME(dynarec64_DC)
+#define dynarec64_DD     STEPNAME(dynarec64_DD)
+#define dynarec64_DE     STEPNAME(dynarec64_DE)
+#define dynarec64_DF     STEPNAME(dynarec64_DF)
 #define dynarec64_F0     STEPNAME(dynarec64_F0)
 #define dynarec64_F20F   STEPNAME(dynarec64_F20F)
 
@@ -889,6 +940,7 @@ void* la64_next(x64emu_t* emu, uintptr_t addr);
 #define retn_to_epilog      STEPNAME(retn_to_epilog)
 #define iret_to_epilog      STEPNAME(iret_to_epilog)
 #define call_c              STEPNAME(call_c)
+#define call_n              STEPNAME(call_n)
 #define grab_segdata        STEPNAME(grab_segdata)
 #define emit_cmp16          STEPNAME(emit_cmp16)
 #define emit_cmp16_0        STEPNAME(emit_cmp16_0)
@@ -966,24 +1018,45 @@ void* la64_next(x64emu_t* emu, uintptr_t addr);
 
 #define emit_pf STEPNAME(emit_pf)
 
-#define x87_restoreround  STEPNAME(x87_restoreround)
-#define sse_setround      STEPNAME(sse_setround)
+#define x87_do_push           STEPNAME(x87_do_push)
+#define x87_do_push_empty     STEPNAME(x87_do_push_empty)
+#define x87_do_pop            STEPNAME(x87_do_pop)
+#define x87_get_current_cache STEPNAME(x87_get_current_cache)
+#define x87_get_cache         STEPNAME(x87_get_cache)
+#define x87_get_lsxcache      STEPNAME(x87_get_lsxcache)
+#define x87_get_st            STEPNAME(x87_get_st)
+#define x87_get_st_empty      STEPNAME(x87_get_st)
+#define x87_free              STEPNAME(x87_free)
+#define x87_refresh           STEPNAME(x87_refresh)
+#define x87_forget            STEPNAME(x87_forget)
+#define x87_reget_st          STEPNAME(x87_reget_st)
+#define x87_stackcount        STEPNAME(x87_stackcount)
+#define x87_unstackcount      STEPNAME(x87_unstackcount)
+#define x87_swapreg           STEPNAME(x87_swapreg)
+#define x87_restoreround      STEPNAME(x87_restoreround)
+#define x87_purgecache        STEPNAME(x87_purgecache)
+#define x87_reflectcount    STEPNAME(x87_reflectcount)
+#define x87_unreflectcount    STEPNAME(x87_unreflectcount)
+#define x87_setround          STEPNAME(x87_setround)
+
 #define mmx_get_reg       STEPNAME(mmx_get_reg)
 #define mmx_get_reg_empty STEPNAME(mmx_get_reg_empty)
-#define x87_forget        STEPNAME(x87_forget)
+#define mmx_forget_reg    STEPNAME(mmx_forget_reg)
+#define mmx_purgecache    STEPNAME(mmx_purgecache)
+
+#define sse_setround      STEPNAME(sse_setround)
 #define sse_purge07cache  STEPNAME(sse_purge07cache)
 #define sse_get_reg       STEPNAME(sse_get_reg)
 #define sse_get_reg_empty STEPNAME(sse_get_reg_empty)
 #define sse_forget_reg    STEPNAME(sse_forget_reg)
 #define sse_reflect_reg   STEPNAME(sse_reflect_reg)
+#define sse_purgecache    STEPNAME(sse_purgecache)
 
 #define fpu_pushcache       STEPNAME(fpu_pushcache)
 #define fpu_popcache        STEPNAME(fpu_popcache)
 #define fpu_reset_cache     STEPNAME(fpu_reset_cache)
 #define fpu_propagate_stack STEPNAME(fpu_propagate_stack)
 #define fpu_purgecache      STEPNAME(fpu_purgecache)
-#define mmx_purgecache      STEPNAME(mmx_purgecache)
-#define x87_purgecache      STEPNAME(x87_purgecache)
 #define fpu_reflectcache    STEPNAME(fpu_reflectcache)
 #define fpu_unreflectcache  STEPNAME(fpu_unreflectcache)
 
@@ -1004,7 +1077,8 @@ void jump_to_next(dynarec_la64_t* dyn, uintptr_t ip, int reg, int ninst, int is3
 void ret_to_epilog(dynarec_la64_t* dyn, int ninst, rex_t rex);
 void retn_to_epilog(dynarec_la64_t* dyn, int ninst, rex_t rex, int n);
 void iret_to_epilog(dynarec_la64_t* dyn, int ninst, int is64bits);
-void call_c(dynarec_la64_t* dyn, int ninst, void* fnc, int reg, int ret, int saveflags, int save_reg);
+void call_c(dynarec_la64_t* dyn, int ninst, void* fnc, int reg, int ret, int saveflags, int save_reg, int arg1, int arg2, int arg3, int arg4, int arg5, int arg6);
+void call_n(dynarec_la64_t* dyn, int ninst, void* fnc, int w);
 void grab_segdata(dynarec_la64_t* dyn, uintptr_t addr, int ninst, int reg, int segment, int modreg);
 void emit_cmp8(dynarec_la64_t* dyn, int ninst, int s1, int s2, int s3, int s4, int s5, int s6);
 void emit_cmp16(dynarec_la64_t* dyn, int ninst, int s1, int s2, int s3, int s4, int s5, int s6);
@@ -1087,37 +1161,75 @@ void emit_pf(dynarec_la64_t* dyn, int ninst, int s1, int s3, int s4);
 void fpu_reset_cache(dynarec_la64_t* dyn, int ninst, int reset_n);
 void fpu_propagate_stack(dynarec_la64_t* dyn, int ninst);
 void fpu_purgecache(dynarec_la64_t* dyn, int ninst, int next, int s1, int s2, int s3);
-void mmx_purgecache(dynarec_la64_t* dyn, int ninst, int next, int s1);
-void x87_purgecache(dynarec_la64_t* dyn, int ninst, int next, int s1, int s2, int s3);
 void fpu_reflectcache(dynarec_la64_t* dyn, int ninst, int s1, int s2, int s3);
 void fpu_unreflectcache(dynarec_la64_t* dyn, int ninst, int s1, int s2, int s3);
 void fpu_pushcache(dynarec_la64_t* dyn, int ninst, int s1, int not07);
 void fpu_popcache(dynarec_la64_t* dyn, int ninst, int s1, int not07);
-// Restore round flag
-void x87_restoreround(dynarec_la64_t* dyn, int ninst, int s1);
+
+// Rounding helpers
+// Set rounding according to cw flags, return reg to restore flags
+int x87_setround(dynarec_la64_t* dyn, int ninst, int s1, int s2);
 // Set rounding according to mxcsr flags, return reg to restore flags
 int sse_setround(dynarec_la64_t* dyn, int ninst, int s1, int s2);
+// Restore round flag
+void x87_restoreround(dynarec_la64_t* dyn, int ninst, int s1);
+
+// x87 helper
+// cache of the local stack counter, to avoid update at every call
+int x87_stackcount(dynarec_la64_t* dyn, int ninst, int scratch);
+// restore local stack counter
+void x87_unstackcount(dynarec_la64_t* dyn, int ninst, int scratch, int count);
+// fpu push. Return the Dd value to be used
+int x87_do_push(dynarec_la64_t* dyn, int ninst, int s1, int t);
+// fpu push. Do not allocate a cache register. Needs a scratch register to do x87stack synch (or 0 to not do it)
+void x87_do_push_empty(dynarec_la64_t* dyn, int ninst, int s1);
+// fpu pop. All previous returned Dd should be considered invalid
+void x87_do_pop(dynarec_la64_t* dyn, int ninst, int s1);
+// get cache index for a x87 reg, return -1 if cache doesn't exist
+int x87_get_current_cache(dynarec_la64_t* dyn, int ninst, int st, int t);
+// get cache index for a x87 reg, create the entry if needed
+int x87_get_cache(dynarec_la64_t* dyn, int ninst, int populate, int s1, int s2, int a, int t);
+// get lsxcache index for a x87 reg
+int x87_get_lsxcache(dynarec_la64_t* dyn, int ninst, int s1, int s2, int a);
+// get vfpu register for a x87 reg, create the entry if needed
+int x87_get_st(dynarec_la64_t* dyn, int ninst, int s1, int s2, int a, int t);
+// get vfpu register for a x87 reg, create the entry if needed. Do not fetch the Stx if not already in cache
+int x87_get_st_empty(dynarec_la64_t* dyn, int ninst, int s1, int s2, int a, int t);
+// Free st, using the FFREE opcode (so it's freed but stack is not moved)
+void x87_free(dynarec_la64_t* dyn, int ninst, int s1, int s2, int s3, int st);
+// refresh a value from the cache ->emu (nothing done if value is not cached)
+void x87_refresh(dynarec_la64_t* dyn, int ninst, int s1, int s2, int st);
 // refresh a value from the cache ->emu and then forget the cache (nothing done if value is not cached)
 void x87_forget(dynarec_la64_t* dyn, int ninst, int s1, int s2, int st);
+// refresh the cache value from emu
+void x87_reget_st(dynarec_la64_t* dyn, int ninst, int s1, int s2, int st);
+// swap 2 x87 regs
+void x87_swapreg(dynarec_la64_t* dyn, int ninst, int s1, int s2, int a, int b);
+void x87_purgecache(dynarec_la64_t* dyn, int ninst, int next, int s1, int s2, int s3);
+void x87_reflectcount(dynarec_la64_t* dyn, int ninst, int s1, int s2);
+void x87_unreflectcount(dynarec_la64_t* dyn, int ninst, int s1, int s2, int s3);
+
+// MMX helpers
+//  get float register for a MMX reg, create the entry if needed
+int mmx_get_reg(dynarec_la64_t* dyn, int ninst, int s1, int s2, int s3, int a);
+// get float register for a MMX reg, but don't try to synch it if it needed to be created
+int mmx_get_reg_empty(dynarec_la64_t* dyn, int ninst, int s1, int s2, int s3, int a);
+// forget float register for a MMX reg, create the entry if needed
+void mmx_forget_reg(dynarec_la64_t* dyn, int ninst, int s1, int a);
+// purge MMX cache
+void mmx_purgecache(dynarec_la64_t* dyn, int ninst, int next, int s1);
 
 // SSE/SSE2 helpers
-// purge the XMM0..XMM7 cache (before function call)
-void sse_purge07cache(dynarec_la64_t* dyn, int ninst, int s1);
 // get lsx register for a SSE reg, create the entry if needed
 int sse_get_reg(dynarec_la64_t* dyn, int ninst, int s1, int a, int forwrite);
 // get lsx register for an SSE reg, but don't try to synch it if it needed to be created
 int sse_get_reg_empty(dynarec_la64_t* dyn, int ninst, int s1, int a);
 // forget float register for a SSE reg, create the entry if needed
 void sse_forget_reg(dynarec_la64_t* dyn, int ninst, int a);
+// purge the XMM0..XMM7 cache (before function call)
+void sse_purge07cache(dynarec_la64_t* dyn, int ninst, int s1);
 // Push current value to the cache
 void sse_reflect_reg(dynarec_la64_t* dyn, int ninst, int a);
-
-// MMX helpers
-//  get lsx register for a MMX reg, create the entry if needed
-int mmx_get_reg(dynarec_la64_t* dyn, int ninst, int s1, int s2, int s3, int a);
-// get lsx register for a MMX reg, but don't try to synch it if it needed to be created
-int mmx_get_reg_empty(dynarec_la64_t* dyn, int ninst, int s1, int s2, int s3, int a);
-
 
 void CacheTransform(dynarec_la64_t* dyn, int ninst, int cacheupd, int s1, int s2, int s3);
 
@@ -1128,6 +1240,32 @@ void la64_move32(dynarec_la64_t* dyn, int ninst, int reg, int32_t val, int zerou
 #define CHECK_CACHE() 0
 #else
 #define CHECK_CACHE() (cacheupd = CacheNeedsTransform(dyn, ninst))
+#endif
+#define lsxcache_st_coherency STEPNAME(lsxcache_st_coherency)
+int lsxcache_st_coherency(dynarec_la64_t* dyn, int ninst, int a, int b);
+
+#if STEP == 0
+#define ST_IS_F(A)        0
+#define ST_IS_I64(A)      0
+#define X87_COMBINE(A, B) LSX_CACHE_ST_D
+#define X87_ST0           LSX_CACHE_ST_D
+#define X87_ST(A)         LSX_CACHE_ST_D
+#elif STEP == 1
+#define ST_IS_F(A)        (lsxcache_get_current_st(dyn, ninst, A) == LSX_CACHE_ST_F)
+#define ST_IS_I64(A)      (lsxcache_get_current_st(dyn, ninst, A) == LSX_CACHE_ST_I64)
+#define X87_COMBINE(A, B) lsxcache_combine_st(dyn, ninst, A, B)
+#define X87_ST0           lsxcache_no_i64(dyn, ninst, 0, lsxcache_get_current_st(dyn, ninst, 0))
+#define X87_ST(A)         lsxcache_no_i64(dyn, ninst, A, lsxcache_get_current_st(dyn, ninst, A))
+#else
+#define ST_IS_F(A)   (lsxcache_get_st(dyn, ninst, A) == LSX_CACHE_ST_F)
+#define ST_IS_I64(A) (lsxcache_get_st(dyn, ninst, A) == LSX_CACHE_ST_I64)
+#if STEP == 3
+#define X87_COMBINE(A, B) lsxcache_st_coherency(dyn, ninst, A, B)
+#else
+#define X87_COMBINE(A, B) lsxcache_get_st(dyn, ninst, A)
+#endif
+#define X87_ST0   lsxcache_get_st(dyn, ninst, 0)
+#define X87_ST(A) lsxcache_get_st(dyn, ninst, A)
 #endif
 
 uintptr_t dynarec64_00(dynarec_la64_t* dyn, uintptr_t addr, uintptr_t ip, int ninst, rex_t rex, int rep, int* ok, int* need_epilog);
@@ -1140,6 +1278,14 @@ uintptr_t dynarec64_67(dynarec_la64_t* dyn, uintptr_t addr, uintptr_t ip, int ni
 uintptr_t dynarec64_660F(dynarec_la64_t* dyn, uintptr_t addr, uintptr_t ip, int ninst, rex_t rex, int* ok, int* need_epilog);
 uintptr_t dynarec64_66F0(dynarec_la64_t* dyn, uintptr_t addr, uintptr_t ip, int ninst, rex_t rex, int rep, int* ok, int* need_epilog);
 uintptr_t dynarec64_66F20F(dynarec_la64_t* dyn, uintptr_t addr, uintptr_t ip, int ninst, rex_t rex, int* ok, int* need_epilog);
+uintptr_t dynarec64_D8(dynarec_la64_t* dyn, uintptr_t addr, uintptr_t ip, int ninst, rex_t rex, int rep, int* ok, int* need_epilog);
+uintptr_t dynarec64_D9(dynarec_la64_t* dyn, uintptr_t addr, uintptr_t ip, int ninst, rex_t rex, int rep, int* ok, int* need_epilog);
+uintptr_t dynarec64_DA(dynarec_la64_t* dyn, uintptr_t addr, uintptr_t ip, int ninst, rex_t rex, int rep, int* ok, int* need_epilog);
+uintptr_t dynarec64_DB(dynarec_la64_t* dyn, uintptr_t addr, uintptr_t ip, int ninst, rex_t rex, int rep, int* ok, int* need_epilog);
+uintptr_t dynarec64_DC(dynarec_la64_t* dyn, uintptr_t addr, uintptr_t ip, int ninst, rex_t rex, int rep, int* ok, int* need_epilog);
+uintptr_t dynarec64_DD(dynarec_la64_t* dyn, uintptr_t addr, uintptr_t ip, int ninst, rex_t rex, int rep, int* ok, int* need_epilog);
+uintptr_t dynarec64_DE(dynarec_la64_t* dyn, uintptr_t addr, uintptr_t ip, int ninst, rex_t rex, int rep, int* ok, int* need_epilog);
+uintptr_t dynarec64_DF(dynarec_la64_t* dyn, uintptr_t addr, uintptr_t ip, int ninst, rex_t rex, int rep, int* ok, int* need_epilog);
 uintptr_t dynarec64_F0(dynarec_la64_t* dyn, uintptr_t addr, uintptr_t ip, int ninst, rex_t rex, int rep, int* ok, int* need_epilog);
 uintptr_t dynarec64_F20F(dynarec_la64_t* dyn, uintptr_t addr, uintptr_t ip, int ninst, rex_t rex, int* ok, int* need_epilog);
 
@@ -1269,6 +1415,65 @@ uintptr_t dynarec64_F20F(dynarec_la64_t* dyn, uintptr_t addr, uintptr_t ip, int 
             rex.rex = opcode;                      \
             opcode = F8;                           \
         }
+
+#define FCOM(w, v1, v2, s1, s2, s3)                            \
+    LD_HU(s3, xEmu, offsetof(x64emu_t, sw));                   \
+    MOV32w(s1, 0b1011100011111111); /* mask off c0,c1,c2,c3 */ \
+    AND(s3, s3, s1);                                           \
+    FCMP_##w(fcc0, v1, v1, cEQ);                               \
+    FCMP_##w(fcc1, v2, v2, cEQ);                               \
+    BCEQZ(fcc0, 8 * 4); /* undefined/NaN */                    \
+    BCEQZ(fcc1, 7 * 4); /* undefined/NaN */                    \
+    FCMP_##w(fcc2, v1, v2, cEQ);                               \
+    BCNEZ(fcc2, 8 * 4);          /* equal */                   \
+    FCMP_##w(fcc3, v1, v2, cLT); /* x2 = (v1<v2)?1:0 */        \
+    MOVCF2GR(s2, fcc3);                                        \
+    SLLI_W(s1, s2, 8);                                         \
+    B(20); /* end */                                           \
+    /* undefined/NaN */                                        \
+    LU12I_W(s1, 4);                                            \
+    ADDI_W(s1, s1, 0b010100000000);                            \
+    B(8); /* end */                                            \
+    /* equal */                                                \
+    LU12I_W(s1, 4);                                            \
+    /* end */                                                  \
+    OR(s3, s3, s1);                                            \
+    ST_H(s3, xEmu, offsetof(x64emu_t, sw));
+
+#define FCOMS(v1, v2, s1, s2, s3) FCOM(S, v1, v2, s1, s2, s3)
+#define FCOMD(v1, v2, s1, s2, s3) FCOM(D, v1, v2, s1, s2, s3)
+
+#define FCOMI(w, v1, v2, s1, s2)                                \
+    RESTORE_EFLAGS(s1);                                         \
+    IFX (X_OF | X_AF | X_SF | X_PEND) {                         \
+        MOV64x(s2, ~((1 << F_OF) | (1 << F_AF) | (1 << F_SF))); \
+        AND(xFlags, xFlags, s2);                                \
+    }                                                           \
+    IFX (X_CF | X_PF | X_ZF | X_PEND) {                         \
+        MOV32w(s2, 0b01000101);                                 \
+        ANDN(xFlags, xFlags, s2);                               \
+        FCMP_##w(fcc0, v1, v1, cEQ);                            \
+        FCMP_##w(fcc1, v2, v2, cEQ);                            \
+        BCEQZ(fcc0, 7 * 4); /* undefined/NaN */                 \
+        BCEQZ(fcc1, 6 * 4); /* undefined/NaN */                 \
+        FCMP_##w(fcc2, v1, v2, cEQ);                            \
+        BCNEZ(fcc2, 6 * 4);          /* equal */                \
+        FCMP_##w(fcc3, v1, v2, cLT); /* s1 = (v1<v2)?1:0 */     \
+        MOVCF2GR(s1, fcc3);                                     \
+        B(4 * 4); /* end */                                     \
+        /* undefined/NaN */                                     \
+        OR(s1, s2, xZR);                                        \
+        B(2 * 4); /* end */                                     \
+        /* equal */                                             \
+        ADDI_W(s1, xZR, ((1 << F_ZF)));                         \
+        /* end */                                               \
+        OR(xFlags, xFlags, s1);                                 \
+    }                                                           \
+    SET_DFNONE();                                                \
+    SPILL_EFLAGS()
+
+#define FCOMIS(v1, v2, s1, s2) FCOMI(S, v1, v2, s1, s2)
+#define FCOMID(v1, v2, s1, s2) FCOMI(D, v1, v2, s1, s2)
 
 // Restore xFlags from LBT.eflags
 #define RESTORE_EFLAGS(s)             \

@@ -1,11 +1,13 @@
 #define INIT dyn->native_size = 0
-#define FINI                                                                                                                                                   \
-    if (ninst) {                                                                                                                                               \
-        dyn->insts[ninst].address = (dyn->insts[ninst - 1].address + dyn->insts[ninst - 1].size);                                                              \
-        dyn->insts_size += 1+((dyn->insts[ninst-1].x64.size>(dyn->insts[ninst-1].size/4))?dyn->insts[ninst-1].x64.size:(dyn->insts[ninst-1].size/4))/15;       \
+#define FINI                                                                                                                                                                   \
+    if (ninst) {                                                                                                                                                               \
+        dyn->insts[ninst].address = (dyn->insts[ninst - 1].address + dyn->insts[ninst - 1].size);                                                                              \
+        dyn->insts_size += 1 + ((dyn->insts[ninst - 1].x64.size > (dyn->insts[ninst - 1].size / 4)) ? dyn->insts[ninst - 1].x64.size : (dyn->insts[ninst - 1].size / 4)) / 15; \
     }
 
-#define MESSAGE(A, ...) do {} while (0)
+#define MESSAGE(A, ...) \
+    do {                \
+    } while (0)
 #define EMIT(A)                      \
     do {                             \
         dyn->insts[ninst].size += 4; \
@@ -24,4 +26,11 @@
         Table64(dyn, (V), 2); \
         EMIT(0);              \
         EMIT(0);              \
+    }
+#define FTABLE64(A, V)               \
+    {                                \
+        mmx87_regs_t v = { .d = V }; \
+        Table64(dyn, v.q, 2);        \
+        EMIT(0);                     \
+        EMIT(0);                     \
     }
