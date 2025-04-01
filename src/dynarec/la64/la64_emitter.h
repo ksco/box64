@@ -164,7 +164,7 @@ f24-f31  fs0-fs7   Static registers                Callee
 #define type_2RI9(opc, imm9, rj, rd)   ((opc) << 19 | ((imm9) & 0x1FF) << 10 | (rj) << 5 | (rd))
 #define type_2RI10(opc, imm10, rj, rd) ((opc) << 20 | ((imm10) & 0x3FF) << 10 | (rj) << 5 | (rd))
 #define type_2RI11(opc, imm11, rj, rd) ((opc) << 21 | ((imm11) & 0x7FF) << 10 | (rj) << 5 | (rd))
-
+#define type_2RROUND(opc, rj, rd, imm2)             ((opc) << 10 | ((imm2&3)<<14) | (rj) << 5 | (rd))
 // tmp = GR[rj][31:0] + GR[rk][31:0]
 // Gr[rd] = SignExtend(tmp[31:0], GRLEN)
 #define ADD_W(rd, rj, rk) EMIT(type_3R(0b00000000000100000, rk, rj, rd))
@@ -961,7 +961,57 @@ f24-f31  fs0-fs7   Static registers                Callee
 #define FCMP_D(cd, fj, fk, cond) EMIT(type_4R(0b000011000010, cond, fk, fj, cd & 0b111))
 #define FSEL(fd, fj, fk, ca)     EMIT(type_4R(0b000011010000, ca & 0b111, fk, fj, fd))
 
+#define FTINTXX_W_S(fd, fj, imm2)        EMIT(type_2RROUND(0b0000000100011010000001, fj, fd, imm2))
+#define FTINTXX_W_D(fd, fj, imm2)        EMIT(type_2RROUND(0b0000000100011010000010, fj, fd, imm2))
+#define FTINTXX_L_S(fd, fj, imm2)        EMIT(type_2RROUND(0b0000000100011010001001, fj, fd, imm2))
+#define FTINTXX_L_D(fd, fj, imm2)        EMIT(type_2RROUND(0b0000000100011010001010, fj, fd, imm2))
 #define RDTIME_D(rd, rj) EMIT(type_2R(0b11010, rj, rd))
+
+// LoongArch FCSR Define 
+//  FCSR0 [9:8](FCSR3) is Rouding Mode bits, 
+//          00=RNE(roundTiesToEven)
+//          01=RZ(roundTowardZero, CHOP)
+//          02=RP(roundTowardsPositive, UP)
+//          03=RM(roundTowardsNegative. DOWN)
+//  FCSR0 [4:0]  (FCSR1) is Enable bits, enable or disable FP exception trap.
+//  FCSR0 [20:16](FCSR2) is Flags bits, shows exceptions since last time flags cleared.
+//  FCSR0 [24:28](FCSR2) is Causes bits, shows only the last float point inst exceptions.
+//  all Enable, Flags, Causes bits follow same VZOUI order from bit4 to bit0
+//          0:I (Inexact)
+//          1:U (Underflow)
+//          2:O (Overflow)
+//          3:Z (Division by Zero)
+//          4:V (Invalid Operation)
+// FCSR{1,2,3} is the same as FCSR0 register, but just write specify range
+// FCSR1 => Enables
+// FCSR2 => Causes , Flags
+// FCSR3 => RM
+
+// Write FP exception flags, immediate,
+#define FSFLAGSI(imm, s1)                           \
+    do {                                            \
+        if(imm !=0) {                               \
+            ADDI_W(s1, xZR, imm);                   \
+            SLLI_W(s1, s1, 24);                     \
+            MOVGR2FCSR(FCSR2, s1);                  \
+        } else {                                    \
+            MOVGR2FCSR(FCSR2, xZR);                 \
+        }                                           \
+    } while (0)
+
+// Read  FP exception flags to rd
+#define FRFLAGS(rd)             \
+    do {                        \
+        MOVFCSR2GR(rd, FCSR2);  \
+    } while (0)
+
+// Test  FP exception flags to rd
+#define FRFLAGSTEST(rd, imm)    \
+    do {                        \
+        SRLI_W(rd, rd, 24);    \
+        ANDI(rd, rd, imm >>24);  \
+    } while (0)
+
 
 ////////////////////////////////////////////////////////////////////////////////
 // (undocumented) LSX/LASX extension instructions
@@ -2108,6 +2158,13 @@ LSX instruction starts with V, LASX instruction starts with XV.
 #define RCR_H(rd, rj, rk) EMIT(type_3R(0x69, rk, rj, rd))
 #define RCR_W(rd, rj, rk) EMIT(type_3R(0x6a, rk, rj, rd))
 #define RCR_D(rd, rj, rk) EMIT(type_3R(0x6b, rk, rj, rd))
+
+//  fcvt.d.ld: convert from long double (saved in two fpr) to double
+//  fcvt.ld.d: convert from double to long double, low part
+//  fcvt.ud.d: convert from double to long double, high part
+#define FCVT_D_LD(fd, fj, fk)   EMIT(type_3R(0b00000001000101010, fk, fj, fd))
+#define FCVT_LD_D(fd, fj)       EMIT(type_2R(0b0000000100010100111000, fj, fd))
+#define FCVT_UD_D(fd, fj)       EMIT(type_2R(0b0000000100010100111001, fj, fd))
 
 ////////////////////////////////////////////////////////////////////////////////
 
