@@ -448,10 +448,12 @@
         BSTRINS_D(wback, ed, wb2 + 7, wb2); \
     }
 
-#define YMM_UNMARK_UPPER_ZERO(a)             \
-    do {                                     \
-        dyn->lsx.avxcache[a].zero_upper = 0; \
-    } while (0)
+// TODO
+#define YMM_UNMARK_UPPER_ZERO(a)
+
+    // do {
+    //     dyn->lsx.avxcache[a].zero_upper = 0;
+    // } while (0)
 
 // AVX helpers
 // Get VX (might use x1)

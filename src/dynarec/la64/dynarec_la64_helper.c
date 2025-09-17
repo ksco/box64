@@ -1017,8 +1017,8 @@ int avx_get_reg(dynarec_la64_t* dyn, int ninst, int s1, int a, int forwrite, int
             dyn->lsx.lsxcache[dyn->lsx.avxcache[a].reg].zero_upper = dyn->lsx.avxcache[a].zero_upper;
         }
         if (width == LSX_AVX_WIDTH_128) {
-            // no need to change width here
             if(forwrite) {
+                dyn->lsx.avxcache[a].width = LSX_AVX_WIDTH_128;
                 dyn->lsx.avxcache[a].zero_upper = 1;
                 dyn->lsx.lsxcache[dyn->lsx.avxcache[a].reg].zero_upper = 1;
             }
@@ -1073,7 +1073,7 @@ int avx_get_reg_empty(dynarec_la64_t* dyn, int ninst, int s1, int a, int width)
         dyn->lsx.avxcache[a].write = 1;
         dyn->lsx.lsxcache[dyn->lsx.avxcache[a].reg].t = LSX_CACHE_YMMW;
         if (width == LSX_AVX_WIDTH_128) {
-            // no need to change width here
+            dyn->lsx.avxcache[a].width = LSX_AVX_WIDTH_128;
             dyn->lsx.avxcache[a].zero_upper = 1;
             dyn->lsx.lsxcache[dyn->lsx.avxcache[a].reg].zero_upper = 1;
         } else {
