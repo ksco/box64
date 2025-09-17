@@ -56,6 +56,7 @@ int fpu_get_reg_emm(dynarec_la64_t* dyn, int emm)
 {
     int ret = EMM0 + emm;
     dyn->lsx.fpuused[ret] = 1;
+    dyn->lsx.lsxcache[ret].v = 0;
     dyn->lsx.lsxcache[ret].t = LSX_CACHE_MM;
     dyn->lsx.lsxcache[ret].n = emm;
     dyn->lsx.news |= (1 << (ret));
@@ -68,6 +69,7 @@ int fpu_get_reg_xmm(dynarec_la64_t* dyn, int t, int xmm)
     i = XMM0 + xmm;
 
     dyn->lsx.fpuused[i] = 1;
+    dyn->lsx.lsxcache[i].v = 0;
     dyn->lsx.lsxcache[i].t = t;
     dyn->lsx.lsxcache[i].n = xmm;
     dyn->lsx.news |= (1 << i);
@@ -81,6 +83,7 @@ int fpu_get_reg_ymm(dynarec_la64_t* dyn, int t, int ymm)
     i = XMM0 + ymm;
 
     dyn->lsx.fpuused[i] = 1;
+    dyn->lsx.lsxcache[i].v = 0;
     dyn->lsx.lsxcache[i].t = t;
     dyn->lsx.lsxcache[i].n = ymm;
     dyn->lsx.news |= (1 << i);
@@ -404,8 +407,8 @@ void inst_name_pass3(dynarec_native_t* dyn, int ninst, const char* name, rex_t r
             case LSX_CACHE_MM: length += sprintf(buf + length, " D%d:%s", ii, getCacheName(dyn->insts[ninst].lsx.lsxcache[ii].t, dyn->insts[ninst].lsx.lsxcache[ii].n)); break;
             case LSX_CACHE_XMMW: length += sprintf(buf + length, " Q%d:%s", ii, getCacheName(dyn->insts[ninst].lsx.lsxcache[ii].t, dyn->insts[ninst].lsx.lsxcache[ii].n)); break;
             case LSX_CACHE_XMMR: length += sprintf(buf + length, " Q%d:%s", ii, getCacheName(dyn->insts[ninst].lsx.lsxcache[ii].t, dyn->insts[ninst].lsx.lsxcache[ii].n)); break;
-            case LSX_CACHE_YMMW: length += sprintf(buf + length, " Q%d:%s%s", ii, getCacheName(dyn->insts[ninst].lsx.lsxcache[ii].t, dyn->insts[ninst].lsx.lsxcache[ii].n), dyn->insts[ninst].lsx.avxcache[dyn->insts[ninst].lsx.lsxcache[ii].n].zero_upper==1?"-UZ":""); break;
-            case LSX_CACHE_YMMR: length += sprintf(buf + length, " Q%d:%s%s", ii, getCacheName(dyn->insts[ninst].lsx.lsxcache[ii].t, dyn->insts[ninst].lsx.lsxcache[ii].n), dyn->insts[ninst].lsx.avxcache[dyn->insts[ninst].lsx.lsxcache[ii].n].zero_upper==1?"-UZ":""); break;
+            case LSX_CACHE_YMMW: length += sprintf(buf + length, " Q%d:%s%s%s", ii, getCacheName(dyn->insts[ninst].lsx.lsxcache[ii].t, dyn->insts[ninst].lsx.lsxcache[ii].n), dyn->insts[ninst].lsx.avxcache[ii].zero_upper==1?"Z":"", dyn->insts[ninst].lsx.avxcache[ii].width==0?"H":""); break;
+            case LSX_CACHE_YMMR: length += sprintf(buf + length, " Q%d:%s%s%s", ii, getCacheName(dyn->insts[ninst].lsx.lsxcache[ii].t, dyn->insts[ninst].lsx.lsxcache[ii].n), dyn->insts[ninst].lsx.avxcache[ii].zero_upper==1?"Z":"", dyn->insts[ninst].lsx.avxcache[ii].width==0?"H":""); break;
             case LSX_CACHE_SCR: length += sprintf(buf + length, " D%d:%s", ii, getCacheName(dyn->insts[ninst].lsx.lsxcache[ii].t, dyn->insts[ninst].lsx.lsxcache[ii].n)); break;
             case LSX_CACHE_NONE:
             default: break;
