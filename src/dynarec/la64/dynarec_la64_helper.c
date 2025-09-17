@@ -1014,22 +1014,24 @@ int avx_get_reg(dynarec_la64_t* dyn, int ninst, int s1, int a, int forwrite, int
         if (forwrite) {
             dyn->lsx.avxcache[a].write = 1; // update only if forwrite
             dyn->lsx.lsxcache[dyn->lsx.avxcache[a].reg].t = LSX_CACHE_YMMW;
-            dyn->lsx.lsxcache[dyn->lsx.avxcache[a].reg].zero_upper = dyn->lsx.avxcache[a].zero_upper;
         }
         if (width == LSX_AVX_WIDTH_128) {
             if(forwrite) {
                 dyn->lsx.avxcache[a].width = LSX_AVX_WIDTH_128;
                 dyn->lsx.avxcache[a].zero_upper = 1;
                 dyn->lsx.lsxcache[dyn->lsx.avxcache[a].reg].zero_upper = 1;
+            } else {
+                dyn->lsx.avxcache[a].zero_upper = 0;
+                dyn->lsx.lsxcache[dyn->lsx.avxcache[a].reg].zero_upper = 0;
             }
         } else {
             // if width changed to 256, and vzeroup ==1, means need zero-fill upper 128bits now.
             if (dyn->lsx.avxcache[a].zero_upper == 1) {
-                dyn->lsx.avxcache[a].zero_upper = 0;
-                dyn->lsx.lsxcache[dyn->lsx.avxcache[a].reg].zero_upper = 0;
                 XVXOR_V(SCRATCH, SCRATCH, SCRATCH);
                 XVPERMI_Q(dyn->lsx.avxcache[a].reg, SCRATCH, 0b00000010);
             }
+            dyn->lsx.avxcache[a].zero_upper = 0;
+            dyn->lsx.lsxcache[dyn->lsx.avxcache[a].reg].zero_upper = 0;
             dyn->lsx.avxcache[a].width = LSX_AVX_WIDTH_256;
             dyn->lsx.lsxcache[dyn->lsx.avxcache[a].reg].width = LSX_AVX_WIDTH_256;
         }
