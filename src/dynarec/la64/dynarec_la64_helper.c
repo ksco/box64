@@ -1014,18 +1014,25 @@ int avx_get_reg(dynarec_la64_t* dyn, int ninst, int s1, int a, int forwrite, int
         if (forwrite) {
             dyn->lsx.avxcache[a].write = 1; // update only if forwrite
             dyn->lsx.lsxcache[dyn->lsx.avxcache[a].reg].t = LSX_CACHE_YMMW;
+            dyn->lsx.lsxcache[dyn->lsx.avxcache[a].reg].zero_upper = dyn->lsx.avxcache[a].zero_upper;
         }
         if (width == LSX_AVX_WIDTH_128) {
             dyn->lsx.avxcache[a].width = LSX_AVX_WIDTH_128;
-            if(forwrite) dyn->lsx.avxcache[a].zero_upper = 1;
+            dyn->lsx.lsxcache[dyn->lsx.avxcache[a].reg].width = LSX_AVX_WIDTH_128;
+            if(forwrite) {
+                dyn->lsx.avxcache[a].zero_upper = 1;
+                dyn->lsx.lsxcache[dyn->lsx.avxcache[a].reg].zero_upper = 1;
+            }
         } else {
             // if width changed to 256, and vzeroup ==1, means need zero-fill upper 128bits now.
             if (dyn->lsx.avxcache[a].zero_upper == 1) {
                 dyn->lsx.avxcache[a].zero_upper = 0;
+                dyn->lsx.lsxcache[dyn->lsx.avxcache[a].reg].zero_upper = 0;
                 XVXOR_V(SCRATCH, SCRATCH, SCRATCH);
                 XVPERMI_Q(dyn->lsx.avxcache[a].reg, SCRATCH, 0b00000010);
             }
             dyn->lsx.avxcache[a].width = LSX_AVX_WIDTH_256;
+            dyn->lsx.lsxcache[dyn->lsx.avxcache[a].reg].width = LSX_AVX_WIDTH_256;
         }
 
         return dyn->lsx.avxcache[a].reg;
@@ -1044,14 +1051,19 @@ int avx_get_reg(dynarec_la64_t* dyn, int ninst, int s1, int a, int forwrite, int
     int ret = dyn->lsx.avxcache[a].reg;
     dyn->lsx.avxcache[a].write = forwrite;
     dyn->lsx.avxcache[a].width = width;
+    dyn->lsx.lsxcache[dyn->lsx.avxcache[a].reg].width = width;
     if (width == LSX_AVX_WIDTH_128) {
-        if(forwrite) dyn->lsx.avxcache[a].zero_upper = 1;
+        if(forwrite) {
+            dyn->lsx.avxcache[a].zero_upper = 1;
+            dyn->lsx.lsxcache[dyn->lsx.avxcache[a].reg].zero_upper = 1;
+        }
         VLD(ret, xEmu, offsetof(x64emu_t, xmm[a]));
     } else {
         VLD(ret, xEmu, offsetof(x64emu_t, xmm[a]));
         VLD(SCRATCH, xEmu, offsetof(x64emu_t, ymm[a]));
         XVPERMI_Q(ret, SCRATCH, XVPERMI_IMM_4_0(0, 2));
         dyn->lsx.avxcache[a].zero_upper = 0;
+            dyn->lsx.lsxcache[dyn->lsx.avxcache[a].reg].zero_upper = 0;
     }
     return ret;
 }
@@ -1063,10 +1075,14 @@ int avx_get_reg_empty(dynarec_la64_t* dyn, int ninst, int s1, int a, int width)
         dyn->lsx.lsxcache[dyn->lsx.avxcache[a].reg].t = LSX_CACHE_YMMW;
         if (width == LSX_AVX_WIDTH_128) {
             dyn->lsx.avxcache[a].width = LSX_AVX_WIDTH_128;
+            dyn->lsx.lsxcache[dyn->lsx.avxcache[a].reg].width = LSX_AVX_WIDTH_128;
             dyn->lsx.avxcache[a].zero_upper = 1;
+            dyn->lsx.lsxcache[dyn->lsx.avxcache[a].reg].zero_upper = 1;
         } else {
             dyn->lsx.avxcache[a].width = LSX_AVX_WIDTH_256;
+            dyn->lsx.lsxcache[dyn->lsx.avxcache[a].reg].width = LSX_AVX_WIDTH_256;
             dyn->lsx.avxcache[a].zero_upper = 0;
+            dyn->lsx.lsxcache[dyn->lsx.avxcache[a].reg].zero_upper = 0;
         }
         return dyn->lsx.avxcache[a].reg;
     }
@@ -1080,10 +1096,13 @@ int avx_get_reg_empty(dynarec_la64_t* dyn, int ninst, int s1, int a, int width)
     dyn->lsx.avxcache[a].reg = fpu_get_reg_ymm(dyn, LSX_CACHE_YMMW, a);
     dyn->lsx.avxcache[a].write = 1;
     dyn->lsx.avxcache[a].width = width;
+    dyn->lsx.lsxcache[dyn->lsx.avxcache[a].reg].width = width;
     if (width == LSX_AVX_WIDTH_128){
         dyn->lsx.avxcache[a].zero_upper = 1;
+        dyn->lsx.lsxcache[dyn->lsx.avxcache[a].reg].zero_upper = 1;
     } else {
         dyn->lsx.avxcache[a].zero_upper = 0;
+        dyn->lsx.lsxcache[dyn->lsx.avxcache[a].reg].zero_upper = 0;
     }
     return dyn->lsx.avxcache[a].reg;
 }
@@ -1136,6 +1155,7 @@ void avx_reflect_reg(dynarec_la64_t* dyn, int ninst, int a)
         }
         VST(SCRATCH, xEmu, offsetof(x64emu_t, ymm[a]));
         dyn->lsx.avxcache[a].zero_upper = 0;
+        dyn->lsx.lsxcache[dyn->lsx.avxcache[a].reg].zero_upper = 0;
     }
 }
 
@@ -1493,6 +1513,8 @@ static void loadCache(dynarec_la64_t* dyn, int ninst, int stack_cnt, int s1, int
     }
     cache->lsxcache[i].n = n;
     cache->lsxcache[i].t = t;
+    cache->lsxcache[i].zero_upper = 0;
+    cache->lsxcache[i].width = LSX_AVX_WIDTH_256;
 }
 
 static void unloadCache(dynarec_la64_t* dyn, int ninst, int stack_cnt, int s1, int s2, int s3, int* s1_val, int* s2_val, int* s3_top, lsxcache_t* cache, int i, int t, int n)
@@ -1508,9 +1530,15 @@ static void unloadCache(dynarec_la64_t* dyn, int ninst, int stack_cnt, int s1, i
             break;
         case LSX_CACHE_YMMW:
             MESSAGE(LOG_DUMP, "\t  - Unloading %s\n", getCacheName(t, n));
-            XVPERMI_Q(SCRATCH, i, XVPERMI_IMM_4_0(0, 1));
-            VST(i, xEmu, offsetof(x64emu_t, xmm[n]));
-            VST(SCRATCH, xEmu, offsetof(x64emu_t, ymm[n]));
+            if (cache->lsxcache[i].zero_upper) {
+                VXOR_V(SCRATCH, SCRATCH, SCRATCH);
+                VST(i, xEmu, offsetof(x64emu_t, xmm[n]));
+                VST(SCRATCH, xEmu, offsetof(x64emu_t, ymm[n]));
+            } else {
+                XVPERMI_Q(SCRATCH, i, XVPERMI_IMM_4_0(0, 1));
+                VST(i, xEmu, offsetof(x64emu_t, xmm[n]));
+                VST(SCRATCH, xEmu, offsetof(x64emu_t, ymm[n]));
+            }
             break;
         case LSX_CACHE_MM:
             MESSAGE(LOG_DUMP, "\t  - Unloading %s\n", getCacheName(t, n));
@@ -1645,15 +1673,30 @@ static void fpuCacheTransform(dynarec_la64_t* dyn, int ninst, int s1, int s2, in
                 } else if (cache.lsxcache[i].t == LSX_CACHE_YMMW && cache_i2.lsxcache[i].t == LSX_CACHE_YMMR) {
                     // refresh cache...
                     MESSAGE(LOG_DUMP, "\t  - Refreh %s\n", getCacheName(cache.lsxcache[i].t, cache.lsxcache[i].n));
-                    XVPERMI_Q(SCRATCH, i, XVPERMI_IMM_4_0(0, 1));
+                    if (cache.lsxcache[i].zero_upper) {
+                        VXOR_V(SCRATCH, SCRATCH, SCRATCH);
+                        XVPERMI_Q(i, SCRATCH, 0b00000010);
+                    } else {
+                        XVPERMI_Q(SCRATCH, i, XVPERMI_IMM_4_0(0, 1));
+                    }
                     VST(i, xEmu, offsetof(x64emu_t, xmm[cache.lsxcache[i].n]));
                     VST(SCRATCH, xEmu, offsetof(x64emu_t, ymm[cache.lsxcache[i].n]));
                     cache.lsxcache[i].t = LSX_CACHE_YMMR;
+                    cache.lsxcache[i].zero_upper = cache_i2.lsxcache[i].zero_upper;
+                    cache.lsxcache[i].width = cache_i2.lsxcache[i].width;
                 } else if (cache.lsxcache[i].t == LSX_CACHE_XMMW && cache_i2.lsxcache[i].t == LSX_CACHE_XMMR) {
                     // refresh cache...
                     MESSAGE(LOG_DUMP, "\t  - Refreh %s\n", getCacheName(cache.lsxcache[i].t, cache.lsxcache[i].n));
                     VST(i, xEmu, offsetof(x64emu_t, xmm[cache.lsxcache[i].n]));
                     cache.lsxcache[i].t = LSX_CACHE_XMMR;
+                }
+            } else if (cache.lsxcache[i].t == LSX_CACHE_YMMW || cache.lsxcache[i].t == LSX_CACHE_YMMR) {
+                if (cache.lsxcache[i].zero_upper && !cache_i2.lsxcache[i].zero_upper) {
+                    VXOR_V(SCRATCH, SCRATCH, SCRATCH);
+                    XVPERMI_Q(i, SCRATCH, 0b00000010);
+                } else if (cache.lsxcache[i].width == LSX_AVX_WIDTH_128 && cache_i2.lsxcache[i].width == LSX_AVX_WIDTH_256) {
+                    VLD(SCRATCH, xEmu, offsetof(x64emu_t, xmm[cache.lsxcache[i].n]));
+                    XVPERMI_Q(i, SCRATCH, XVPERMI_IMM_4_0(0, 2));
                 }
             }
         }

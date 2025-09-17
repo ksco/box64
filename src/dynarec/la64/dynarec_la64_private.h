@@ -25,10 +25,12 @@ typedef struct box64env_s box64env_t;
 #define LSX_AVX_WIDTH_256 1
 
 typedef union lsx_cache_s {
-    int8_t v;
+    int16_t v;
     struct {
-        uint8_t t : 4; // reg type
-        uint8_t n : 4; // reg number
+        uint16_t t : 4;          // reg type
+        uint16_t n : 4;          // reg number
+        uint16_t zero_upper : 4; // for avx
+        uint16_t width : 4;      // for avx
     };
 } lsx_cache_t;
 

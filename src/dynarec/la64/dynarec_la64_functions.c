@@ -255,6 +255,8 @@ void lsxcacheUnwind(lsxcache_t* cache)
                 case LSX_CACHE_YMMW:
                     cache->avxcache[cache->lsxcache[i].n].reg = i;
                     cache->avxcache[cache->lsxcache[i].n].write = (cache->lsxcache[i].t == LSX_CACHE_YMMW) ? 1 : 0;
+                    cache->avxcache[cache->lsxcache[i].n].zero_upper = cache->lsxcache[i].zero_upper;
+                    cache->avxcache[cache->lsxcache[i].n].width = cache->lsxcache[i].width;
                     break;
                 case LSX_CACHE_ST_F:
                 case LSX_CACHE_ST_D:
