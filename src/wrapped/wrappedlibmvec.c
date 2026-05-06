@@ -21,6 +21,7 @@ const char* libmvecName = "libmvec.so.1";
 // Matches x86 SSE2 __m128d and aarch64 NEON float64x2_t layout.
 typedef double v2df __attribute__((vector_size(16)));
 typedef v2df (*v2df_func_t)(v2df);
+typedef v2df (*v2df_v2df_func_t)(v2df, v2df);
 
 /// GCC vector type: 4 packed floats in 128 bits.
 typedef float v4sf __attribute__((vector_size(16)));
@@ -29,6 +30,7 @@ typedef v4sf (*v4sf_v4sf_func_t)(v4sf, v4sf);
 
 static v2df_func_t native_v2d_sin = NULL;
 static v2df_func_t native_v2d_cos = NULL;
+static v2df_v2df_func_t native_v2d_pow = NULL;
 
 static v4sf_func_t native_v4f_acosf = NULL;
 static v4sf_v4sf_func_t native_v4f_powf = NULL;
@@ -39,11 +41,13 @@ static v4sf_v4sf_func_t native_v4f_powf = NULL;
 #ifdef ARM64
 #define NATIVE_SIN_NAME "_ZGVnN2v_sin"
 #define NATIVE_COS_NAME "_ZGVnN2v_cos"
+#define NATIVE_POW_NAME "_ZGVnN2vv_pow"
 #define NATIVE_ACOSF4_NAME "_ZGVnN4v_acosf"
 #define NATIVE_POWF4_NAME "_ZGVnN4vv_powf"
 #else
 #define NATIVE_SIN_NAME "_ZGVbN2v_sin"
 #define NATIVE_COS_NAME "_ZGVbN2v_cos"
+#define NATIVE_POW_NAME "_ZGVbN2vv_pow"
 #define NATIVE_ACOSF4_NAME "_ZGVbN4v_acosf"
 #define NATIVE_POWF4_NAME "_ZGVbN4vv_powf"
 #endif
@@ -95,6 +99,20 @@ EXPORT void my__ZGVbN4v_acosf(x64emu_t* emu)
     }
 }
 
+EXPORT void my__ZGVbN2vv_pow(x64emu_t* emu)
+{
+    if (native_v2d_pow) {
+        v2df base, exp, result;
+        memcpy(&base, &emu->xmm[0], sizeof(v2df));
+        memcpy(&exp, &emu->xmm[1], sizeof(v2df));
+        result = native_v2d_pow(base, exp);
+        memcpy(&emu->xmm[0], &result, sizeof(v2df));
+    } else {
+        emu->xmm[0].d[0] = pow(emu->xmm[0].d[0], emu->xmm[1].d[0]);
+        emu->xmm[0].d[1] = pow(emu->xmm[0].d[1], emu->xmm[1].d[1]);
+    }
+}
+
 EXPORT void my__ZGVbN4vv_powf(x64emu_t* emu)
 {
     if (native_v4f_powf) {
@@ -115,18 +133,19 @@ EXPORT void my__ZGVbN4vv_powf(x64emu_t* emu)
 // Try to load the native libmvec.so.1 and resolve vectorized sin/cos.
 // On aarch64 and x86_64: native libmvec exists in glibc, use it.
 // On ppc64le and others: dlopen fails, fall back to scalar sin/cos.
-#define PRE_INIT                                                          \
-    if (1) {                                                              \
-        void* native = dlopen("libmvec.so.1", RTLD_LAZY);                 \
-        if (native) {                                                     \
-            lib->w.lib = native;                                          \
-            native_v2d_sin = (v2df_func_t)dlsym(native, NATIVE_SIN_NAME); \
-            native_v2d_cos = (v2df_func_t)dlsym(native, NATIVE_COS_NAME); \
-            native_v4f_acosf = (v4sf_func_t)dlsym(native, NATIVE_ACOSF4_NAME); \
-            native_v4f_powf = (v4sf_v4sf_func_t)dlsym(native, NATIVE_POWF4_NAME); \
-        } else {                                                          \
-            lib->w.lib = dlopen(NULL, RTLD_LAZY | RTLD_GLOBAL);           \
-        }                                                                 \
+#define PRE_INIT                                                                    \
+    if (1) {                                                                        \
+        void* native = dlopen("libmvec.so.1", RTLD_LAZY);                           \
+        if (native) {                                                               \
+            lib->w.lib = native;                                                    \
+            native_v2d_sin = (v2df_func_t)dlsym(native, NATIVE_SIN_NAME);           \
+            native_v2d_cos = (v2df_func_t)dlsym(native, NATIVE_COS_NAME);           \
+            native_v2d_pow = (v2df_v2df_func_t)dlsym(native, NATIVE_POW_NAME);      \
+            native_v4f_acosf = (v4sf_func_t)dlsym(native, NATIVE_ACOSF4_NAME);      \
+            native_v4f_powf = (v4sf_v4sf_func_t)dlsym(native, NATIVE_POWF4_NAME);   \
+        } else {                                                                    \
+            lib->w.lib = dlopen(NULL, RTLD_LAZY | RTLD_GLOBAL);                     \
+        }                                                                           \
     } else
 
 #include "wrappedlib_init.h"

@@ -4197,7 +4197,6 @@
 #() iFEv -> iFE
 #() lFEv -> lFE
 #() pFEv -> pFE
-#() vFEvv -> vFE
 #() iFEvpp -> iFEpp
 #() pFEppv -> pFEpp
 #() iFEpvpp -> iFEppp
@@ -6120,8 +6119,6 @@ wrappedlibmvec:
 - vFv:
   - _ZGVbN2v_cos
   - _ZGVbN2v_sin
-  - _ZGVbN4v_acosf
-  - _ZGVbN4vv_powf
 wrappedlibncurses:
 - pFv:
   - initscr

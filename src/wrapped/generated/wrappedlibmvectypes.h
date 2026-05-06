@@ -15,8 +15,6 @@ typedef void (*vFv_t)(void);
 
 #define SUPER() ADDED_FUNCTIONS() \
 	GO(_ZGVbN2v_cos, vFv_t) \
-	GO(_ZGVbN2v_sin, vFv_t) \
-	GO(_ZGVbN4v_acosf, vFv_t) \
-	GO(_ZGVbN4vv_powf, vFv_t)
+	GO(_ZGVbN2v_sin, vFv_t)
 
 #endif // __wrappedlibmvecTYPES_H_
