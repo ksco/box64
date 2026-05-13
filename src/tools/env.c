@@ -9,6 +9,10 @@
 #if defined(DYNAREC) && !defined(WIN32)
 #include <sys/types.h>
 #include <dirent.h>
+#include <errno.h>
+#include <unistd.h>
+#include <sys/stat.h>
+#include <time.h>
 #endif
 
 #include "os.h"
@@ -1037,6 +1041,162 @@ const char* NicePrintSize(size_t sz)
     return buf;
 }
 
+#ifndef WIN32
+typedef struct DynaCacheFileEntry_s {
+    char* filename;
+    uint64_t size;
+    time_t mtime;
+    int valid;
+} DynaCacheFileEntry_t;
+
+int ReadDynaCache(const char* folder, const char* name, mapping_t* mapping, int verbose);
+
+#ifndef O_CLOEXEC
+#define O_CLOEXEC 0
+#endif
+
+#define DYNACACHE_TMP_STALE_SECONDS 60
+
+static void SyncDynaCacheFolder(const char* folder)
+{
+#ifdef O_DIRECTORY
+    int fd = open(folder, O_RDONLY|O_DIRECTORY|O_CLOEXEC);
+#else
+    int fd = open(folder, O_RDONLY|O_CLOEXEC);
+#endif
+    if(fd>=0) {
+        fsync(fd);
+        close(fd);
+    }
+}
+
+static int DynaCacheOpenTempFile(const char* mapname, char* tmpname, size_t tmpname_size)
+{
+    for(int i=0; i<100; ++i) {
+        snprintf(tmpname, tmpname_size, "%s.tmp.%ld.%d", mapname, (long)getpid(), i);
+        int fd = open(tmpname, O_WRONLY|O_CREAT|O_EXCL|O_CLOEXEC, 0644);
+        if(fd>=0)
+            return fd;
+        if(errno!=EEXIST)
+            return -1;
+    }
+    errno = EEXIST;
+    return -1;
+}
+
+static int RemoveStaleDynaCacheTempFile(const char* folder, const char* name)
+{
+    if(!strstr(name, ".box64.tmp."))
+        return 0;
+
+    char filename[strlen(folder)+strlen(name)+1];
+    strcpy(filename, folder);
+    strcat(filename, name);
+
+    struct stat st = {0};
+    if(lstat(filename, &st) || !S_ISREG(st.st_mode) || st.st_size<0)
+        return 0;
+
+    time_t now = time(NULL);
+    if(now==(time_t)-1 || st.st_mtime > now-DYNACACHE_TMP_STALE_SECONDS)
+        return 0;
+
+    size_t size = st.st_size;
+    if(unlink(filename))
+        return 0;
+
+    dynarec_log(LOG_INFO, "DynaCache removed stale temporary cache file %s (%s)\n", filename, NicePrintSize(size));
+    return 1;
+}
+
+static int DynaCacheFileEntryCmp(const void* a, const void* b)
+{
+    const DynaCacheFileEntry_t* fa = a;
+    const DynaCacheFileEntry_t* fb = b;
+    if(fa->mtime < fb->mtime)
+        return -1;
+    if(fa->mtime > fb->mtime)
+        return 1;
+    return strcmp(fa->filename, fb->filename);
+}
+
+static void PruneDynaCacheFolder(const char* folder, uint64_t max_size)
+{
+    if(!max_size)
+        return;
+    DIR* dir = opendir(folder);
+    if(!dir) return;
+
+    DynaCacheFileEntry_t* files = NULL;
+    size_t count = 0;
+    size_t capacity = 0;
+    uint64_t total = 0;
+
+    // collect all dynacache files in the folder
+    struct dirent* d = NULL;
+    while((d = readdir(dir))) {
+        size_t l = strlen(d->d_name);
+        if(RemoveStaleDynaCacheTempFile(folder, d->d_name))
+            continue;
+        if(l<=6 || strcmp(d->d_name+l-6, ".box64")) continue;
+
+        char* filename = box_malloc(strlen(folder)+l+1);
+        strcpy(filename, folder);
+        strcat(filename, d->d_name);
+
+        struct stat st = {0};
+        if(lstat(filename, &st) || !S_ISREG(st.st_mode) || st.st_size<0) {
+            box_free(filename);
+            continue;
+        }
+
+        if(count == capacity) {
+            size_t new_capacity = capacity ? capacity*2 : 16;
+            DynaCacheFileEntry_t* new_files = box_realloc(files, new_capacity*sizeof(*files));
+            files = new_files;
+            capacity = new_capacity;
+        }
+
+        files[count].filename = filename;
+        files[count].size = st.st_size;
+        files[count].mtime = st.st_mtime;
+        files[count].valid = -1;
+        total += files[count].size;
+        ++count;
+    }
+    closedir(dir);
+
+    // start pruning, invalid files first, then older ones until we are under 80% of set max size
+    if(total > max_size && count) {
+        uint64_t target_size = (max_size/5) * 4;
+        size_t folder_len = strlen(folder);
+        for(size_t i=0; i<count && total>target_size; ++i) {
+            files[i].valid = (ReadDynaCache(folder, files[i].filename+folder_len, NULL, 0)==0);
+            if(files[i].valid) continue;
+            uint64_t size = files[i].size;
+            if(!unlink(files[i].filename)) {
+                dynarec_log(LOG_INFO, "DynaCache removed invalid cache file %s (%s)\n", files[i].filename, NicePrintSize(size));
+                files[i].size = 0;
+                total = (size>total)?0:total-size;
+            }
+        }
+        qsort(files, count, sizeof(*files), DynaCacheFileEntryCmp);
+        for(size_t i=0; i<count && total>target_size; ++i) {
+            if(files[i].valid!=1 || !files[i].size)
+                continue;
+            uint64_t size = files[i].size;
+            if(!unlink(files[i].filename)) {
+                dynarec_log(LOG_INFO, "DynaCache removed old cache file %s (%s)\n", files[i].filename, NicePrintSize(size));
+                total = (size>total)?0:total-size;
+            }
+        }
+    }
+
+    for(size_t i=0; i<count; ++i) box_free(files[i].filename);
+    box_free(files);
+}
+#endif
+
 void SerializeMmaplist(mapping_t* mapping)
 {
     if(!DYNAREC_VERSION)
@@ -1119,23 +1279,52 @@ void SerializeMmaplist(mapping_t* mapping)
         getUnalignedRange(mapping->start, map_len, unalignedAddresses);
     // all done, now just create the file and write all this down...
     #ifndef WIN32
-    unlink(mapname);
-    FILE* f = fopen(mapname, "wbx");
-    if(!f) {
+    char tmpname[strlen(mapname)+64];
+    int tmpfd = DynaCacheOpenTempFile(mapname, tmpname, sizeof(tmpname));
+    if(tmpfd<0) {
         dynarec_log(LOG_INFO, "Cannot create cache file %s\n", mapname);
         return;
     }
-    if(fwrite(all_header, total, 1, f)!=1) {
-        dynarec_log(LOG_INFO, "Error writing Cache file (disk full?)\n");
+    FILE* f = fdopen(tmpfd, "wb");
+    if(!f) {
+        close(tmpfd);
+        unlink(tmpname);
+        dynarec_log(LOG_INFO, "Cannot create cache file %s\n", mapname);
         return;
     }
-    for(int i=0; i<nblocks; ++i) {
+    int write_error = 0;
+    if(fwrite(all_header, total, 1, f)!=1)
+        write_error = 1;
+    for(int i=0; i<nblocks && !write_error; ++i) {
         if(fwrite(blocks[i].block, blocks[i].size, 1, f)!=1) {
-            dynarec_log(LOG_INFO, "Error writing Cache file (disk full?)\n");
-            return;
+            write_error = 1;
         }
     }
-    fclose(f);
+    if(!write_error && fflush(f))
+        write_error = 1;
+    if(!write_error && fsync(tmpfd))
+        write_error = 1;
+    if(fclose(f))
+        write_error = 1;
+    if(write_error) {
+        dynarec_log(LOG_INFO, "Error writing Cache file (disk full?)\n");
+        unlink(tmpname);
+        return;
+    }
+    int dynacache_limit = box64env.dynacache_limit;
+    if(mapping->env && mapping->env->is_dynacache_limit_overridden)
+        dynacache_limit = mapping->env->dynacache_limit;
+
+    if(rename(tmpname, mapname)) {
+        dynarec_log(LOG_INFO, "Cannot publish cache file %s\n", mapname);
+        unlink(tmpname);
+        return;
+    }
+    SyncDynaCacheFolder(folder);
+    if(dynacache_limit>0) {
+        PruneDynaCacheFolder(folder, (uint64_t)dynacache_limit*1024*1024);
+        SyncDynaCacheFolder(folder);
+    }
     #else
     // TODO?
     #endif
@@ -1163,19 +1352,23 @@ int ReadDynaCache(const char* folder, const char* name, mapping_t* mapping, int 
     strcpy(filename, folder);
     strcat(filename, name);
     if(verbose) printf_log(LOG_NONE, "File %s:\t", name);
-    if(!FileExist(filename, IS_FILE)) {
-        if(verbose) printf_log_prefix(0, LOG_NONE, "Invalid file\n");
-        return DCERR_NEXIST;
-    }
-    size_t filesize = FileSize(filename);
-    if(filesize<sizeof(DynaCacheHeader_t)) {
-        if(verbose) printf_log_prefix(0, LOG_NONE, "Invalid side: %zd\n", filesize);
-        return DCERR_TOOSMALL;
-    }
     FILE *f = fopen(filename, "rb");
     if(!f) {
-        if(verbose) printf_log_prefix(0, LOG_NONE, "Cannot open file\n");
+        int exists = FileExist(filename, IS_FILE);
+        if(verbose) printf_log_prefix(0, LOG_NONE, "%s\n", exists?"Cannot open file":"Invalid file");
+        return exists?DCERR_FERROR:DCERR_NEXIST;
+    }
+    struct stat st = {0};
+    if(fstat(fileno(f), &st) || !S_ISREG(st.st_mode) || st.st_size<0) {
+        if(verbose) printf_log_prefix(0, LOG_NONE, "Cannot stat file\n");
+        fclose(f);
         return DCERR_FERROR;
+    }
+    size_t filesize = st.st_size;
+    if(filesize<sizeof(DynaCacheHeader_t)) {
+        if(verbose) printf_log_prefix(0, LOG_NONE, "Invalid side: %zd\n", filesize);
+        fclose(f);
+        return DCERR_TOOSMALL;
     }
     DynaCacheHeader_t header = {0};
     if(fread(&header, sizeof(header), 1, f)!=1) {
@@ -1274,6 +1467,7 @@ int ReadDynaCache(const char* folder, const char* name, mapping_t* mapping, int 
         box_free(short_name);
         if(strcmp(file_name, name)) {
             if(verbose) printf_log_prefix(0, LOG_NONE, "Invalid cache name\n");
+            fclose(f);
             return DCERR_BADNAME;
         }
         if(verbose) {
@@ -1330,10 +1524,11 @@ void DynaCacheList(const char* filter)
     DIR* dir = opendir(folder);
     if(!dir) {
         printf_log(LOG_NONE, "Cannot open DynaCache folder\n");
+        return;
     }
     struct dirent* d = NULL;
     int need_filter = (filter && strlen(filter));
-    while(d = readdir(dir)) {
+    while((d = readdir(dir))) {
         size_t l = strlen(d->d_name);
         if(l>6 && !strcmp(d->d_name+l-6, ".box64")) {
             if(need_filter && !strstr(d->d_name, filter))
@@ -1356,10 +1551,13 @@ void DynaCacheClean()
     DIR* dir = opendir(folder);
     if(!dir) {
         printf_log(LOG_NONE, "Cannot open DynaCache folder\n");
+        return;
     }
     struct dirent* d = NULL;
-    while(d = readdir(dir)) {
+    while((d = readdir(dir))) {
         size_t l = strlen(d->d_name);
+        if(RemoveStaleDynaCacheTempFile(folder, d->d_name))
+            continue;
         if(l>6 && !strcmp(d->d_name+l-6, ".box64")) {
             int ret = ReadDynaCache(folder, d->d_name, NULL, 0);
             if(ret) {
@@ -1370,12 +1568,13 @@ void DynaCacheClean()
                 if(!unlink(filename)) {
                     printf_log(LOG_NONE, "Removed %s for %s\n", d->d_name, NicePrintSize(filesize));
                 } else {
-                    printf_log(LOG_NONE, "Could not remove %d\n", d->d_name);
+                    printf_log(LOG_NONE, "Could not remove %s\n", d->d_name);
                 }
             }
         }
     }
     closedir(dir);
+    SyncDynaCacheFolder(folder);
     #endif
 }
 #ifndef WIN32
