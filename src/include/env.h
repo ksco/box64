@@ -153,6 +153,7 @@ extern char* ftrace_name;
     BOOLEAN(BOX64_NOVULKANOVERLAY, novulkanoverlay, 0, 0)                     \
     INTEGER(BOX64_DYNACACHE, dynacache, 2, 0, 2, 0)                           \
     STRING(BOX64_DYNACACHE_FOLDER, dynacache_folder, 0)                       \
+    INTEGER(BOX64_DYNACACHE_COMPRESS, dynacache_compress, 1, 0, 2, 0)         \
     INTEGER(BOX64_DYNACACHE_LIMIT, dynacache_limit, 2048, 0, 1048576, 0)      \
     INTEGER(BOX64_DYNACACHE_MIN, dynacache_min, 350, 0, 10240, 0)
 
@@ -232,6 +233,15 @@ typedef struct DynaCacheBlock_s {
     size_t          size;
     size_t          free_size;
 } DynaCacheBlock_t;
+
+#define COMP_NONE   0
+#define COMP_Z      1
+#define COMP_Z_MAX  2
+typedef struct CompressedDynaCacheBlock_s {
+    DynaCacheBlock_t block;
+    size_t      compsize;
+    uint8_t     type;
+} CompressedDynaCacheBlock_t;
 #endif
 
 void InitializeEnvFiles();

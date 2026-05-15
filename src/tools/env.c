@@ -27,6 +27,7 @@
 #include "pe_tools.h"
 #ifdef DYNAREC
 #include "dynacache_hashes.h"
+#include "dynacache_compress.h"
 #endif
 
 box64env_t box64env = { 0 };
@@ -42,9 +43,10 @@ int MmaplistHasNew(mmaplist_t* list, int clear);
 int MmaplistIsDirty(mmaplist_t* list);
 int MmaplistNBlocks(mmaplist_t* list);
 size_t MmaplistTotalAlloc(mmaplist_t* list);
-void MmaplistFillBlocks(mmaplist_t* list, DynaCacheBlock_t* blocks);
+void MmaplistFillBlocks(mmaplist_t* list, CompressedDynaCacheBlock_t* blocks);
 void MmaplistAddNBlocks(mmaplist_t* list, int nblocks);
 int MmaplistAddBlock(mmaplist_t* list, int fd, off_t offset, void* orig, size_t size, intptr_t delta_map, uintptr_t mapping_start);
+int MmaplistAddCompressedBlock(mmaplist_t* list, int type, void* src, size_t src_size, void* orig, size_t size, intptr_t delta_map, uintptr_t mapping_start);
 int nLockAddressRange(uintptr_t start, size_t size);
 void getLockAddressRange(uintptr_t start, size_t size, uintptr_t addrs[]);
 void addLockAddress(uintptr_t addr);
@@ -932,7 +934,7 @@ done:
     `box64 --dynacache-clean` can be used from command line to purge obsolete DyaCache files
 */
 
-#define FILE_VERSION 2
+#define FILE_VERSION 3
 #define HEADER_SIGN  "DynaCache"
 
 typedef struct DynaCacheHeader_s {
@@ -1236,8 +1238,8 @@ void SerializeMmaplist(mapping_t* mapping)
     size_t map_len = SizeFileMapped(mapping->start);
     size_t nLockAddresses = nLockAddressRange(mapping->start, map_len);
     size_t nUnaligned = nUnalignedRange(mapping->start, map_len);
-    size_t total = sizeof(DynaCacheHeader_t) + strlen(mapping->fullname) + 1 + nblocks*sizeof(DynaCacheBlock_t) + nLockAddresses*sizeof(uintptr_t) + nUnaligned*sizeof(uintptr_t);;
-    total = (total + box64_pagesize-1)&~(box64_pagesize-1); // align on pagesize
+    size_t total = sizeof(DynaCacheHeader_t) + strlen(mapping->fullname) + 1 + nblocks*sizeof(CompressedDynaCacheBlock_t) + nLockAddresses*sizeof(uintptr_t) + nUnaligned*sizeof(uintptr_t);;
+    total = ALIGN(total); // align on pagesize
     uint8_t all_header[total];
     memset(all_header, 0, total);
     void* p = all_header;
@@ -1267,9 +1269,9 @@ void SerializeMmaplist(mapping_t* mapping)
     p += sizeof(DynaCacheHeader_t); // fullname
     strcpy(p, mapping->fullname);
     p += strlen(p) + 1; // blocks
-    DynaCacheBlock_t* blocks = p;
+    CompressedDynaCacheBlock_t* blocks = p;
     MmaplistFillBlocks(mapping->mmaplist, blocks);
-    p += nblocks*sizeof(DynaCacheBlock_t);
+    p += nblocks*sizeof(CompressedDynaCacheBlock_t);
     uintptr_t* lockAddresses = p;
     p += nLockAddresses*sizeof(uintptr_t);
     uintptr_t* unalignedAddresses = p;
@@ -1295,10 +1297,44 @@ void SerializeMmaplist(mapping_t* mapping)
     int write_error = 0;
     if(fwrite(all_header, total, 1, f)!=1)
         write_error = 1;
-    for(int i=0; i<nblocks && !write_error; ++i) {
-        if(fwrite(blocks[i].block, blocks[i].size, 1, f)!=1) {
-            write_error = 1;
+    int rewrite_header = 0;
+    int type = BOX64ENV(dynacache_compress);
+    if(type!=COMP_NONE) {
+        for(int i=0; i<nblocks && !write_error; ++i) {
+            size_t sz = 0;
+            void* dest = dc_compress(blocks[i].block.block, blocks[i].block.size, type, &sz);
+            if(dest) {
+                if(fwrite(dest, sz, 1, f)!=1)
+                    write_error = 1;
+                else {
+                    blocks[i].type = type;
+                    blocks[i].compsize = sz;
+                    rewrite_header = 1;
+                    // align to pagesize...
+                    if(sz&(box64_pagesize-1)) {
+                        size_t align = box64_pagesize - (sz&(box64_pagesize-1));
+                        char tmp[align];
+                        memset(tmp, 0, align);
+                        if(fwrite(tmp, align, 1, f)!=1)
+                            write_error = 1;
+                    }
+                }
+                box_free(dest);
+            } else {
+                if(fwrite(blocks[i].block.block, blocks[i].block.size, 1, f)!=1)
+                    write_error = 1;
+            }
         }
+    } else
+        for(int i=0; i<nblocks && !write_error; ++i) {
+            if(fwrite(blocks[i].block.block, blocks[i].block.size, 1, f)!=1) {
+                write_error = 1;
+            }
+        }
+    if(!write_error && rewrite_header) {
+        fseek(f, 0, SEEK_SET);
+        if(fwrite(all_header, total, 1, f)!=1)
+            write_error = 1;
     }
     if(!write_error && fflush(f))
         write_error = 1;
@@ -1422,8 +1458,8 @@ int ReadDynaCache(const char* folder, const char* name, mapping_t* mapping, int 
         fclose(f);
         return DCERR_MAPCHG;
     }
-    DynaCacheBlock_t blocks[header.nblocks];
-    if(fread(blocks, sizeof(DynaCacheBlock_t), header.nblocks, f)!=header.nblocks) {
+    CompressedDynaCacheBlock_t blocks[header.nblocks];
+    if(fread(blocks, sizeof(CompressedDynaCacheBlock_t), header.nblocks, f)!=header.nblocks) {
         if(verbose) printf_log_prefix(0, LOG_NONE, "Cannot read blocks\n");
         fclose(f);
         return DCERR_FERROR;
@@ -1441,7 +1477,7 @@ int ReadDynaCache(const char* folder, const char* name, mapping_t* mapping, int 
         return DCERR_FERROR;
     }
     off_t p = ftell(f);
-    p = (p+box64_pagesize-1)&~(box64_pagesize-1);
+    p = ALIGN(p);;
     if(fseek(f, p, SEEK_SET)<0) {
         if(verbose) printf_log_prefix(0, LOG_NONE, "Error reading a block\n");
         fclose(f);
@@ -1450,8 +1486,8 @@ int ReadDynaCache(const char* folder, const char* name, mapping_t* mapping, int 
     if(!mapping) {
         // check the blocks can be read without reading...
         for(int i=0; i<header.nblocks; ++i) {
-            p+=blocks[i].size;
-            if(fseek(f, blocks[i].size, SEEK_CUR)<0 || ftell(f)!=p) {
+            p+=(blocks[i].type==COMP_NONE)?blocks[i].block.size:blocks[i].compsize;
+            if(fseek(f, (blocks[i].type==COMP_NONE)?blocks[i].block.size:blocks[i].compsize, SEEK_CUR)<0 || ftell(f)!=p) {
                 if(verbose) printf_log_prefix(0, LOG_NONE, "Error reading a block\n");
                 fclose(f);
                 return DCERR_FERROR;
@@ -1476,15 +1512,25 @@ int ReadDynaCache(const char* folder, const char* name, mapping_t* mapping, int 
             printf_log_prefix(0, LOG_NONE, "%s (%s)\n", map_filename, NicePrintSize(filesize));
             printf_log_prefix(0, LOG_NONE, "\tDynarec Settings:\n");
             PrintDynfSettings(LOG_NONE, header.dynarec_settings);
-            size_t total_blocks = 0, total_free = 0;
+            size_t total_blocks = 0, total_free = 0, total_compressed = 0, total_uncompressed = 0;
             size_t total_code = header.codesize;
             for(int i=0; i<header.nblocks; ++i) {
-                total_blocks += blocks[i].size;
-                total_free += blocks[i].free_size;
+                total_blocks += blocks[i].block.size;
+                total_free += blocks[i].block.free_size;
+                if(blocks[i].compsize)
+                    total_compressed += blocks[i].compsize;
+                else
+                    total_uncompressed += blocks[i].block.size;
             }
             printf_log_prefix(0, LOG_NONE, "\tHas %d blocks for a total of %s", header.nblocks, NicePrintSize(total_blocks));
             printf_log_prefix(0, LOG_NONE, " with %s still free", NicePrintSize(total_free));
-            printf_log_prefix(0, LOG_NONE, " and %s non-canceled blocks (mapped at %p-%p, with %zu lock and %zu unaligned addresses)\n", NicePrintSize(total_code), (void*)header.map_addr, (void*)header.map_addr+header.map_len, header.nLockAddresses, header.nUnalignedAddresses);
+            printf_log_prefix(0, LOG_NONE, " and %s non-canceled blocks (mapped at %p-%p, with %zu lock and %zu unaligned addresses)", NicePrintSize(total_code), (void*)header.map_addr, (void*)header.map_addr+header.map_len, header.nLockAddresses, header.nUnalignedAddresses);
+            if(total_compressed) {
+                printf_log_prefix(0, LOG_NONE, " with %s compressed blocks", NicePrintSize(total_compressed));
+                if(total_uncompressed)
+                    printf_log_prefix(0, LOG_NONE, " and %s uncompressed block", NicePrintSize(total_uncompressed));
+            }
+            printf_log_prefix(0, LOG_NONE, "\n");
         }
     } else {
         // actually reading!
@@ -1495,12 +1541,24 @@ int ReadDynaCache(const char* folder, const char* name, mapping_t* mapping, int 
             mapping->mmaplist = NewMmaplist();
         MmaplistAddNBlocks(mapping->mmaplist, header.nblocks);
         for(int i=0; i<header.nblocks; ++i) {
-            if(MmaplistAddBlock(mapping->mmaplist, fd, p, blocks[i].block, blocks[i].size, delta_map, mapping->start)) {
+            int ret = 0;
+            if(blocks[i].type==COMP_NONE)
+                ret = MmaplistAddBlock(mapping->mmaplist, fd, p, blocks[i].block.block, blocks[i].block.size, delta_map, mapping->start);
+            else {
+                void* src = box_malloc(blocks[i].compsize);
+                fseek(f, p, SEEK_SET);
+                if(!src || (fread(src, blocks[i].compsize, 1, f)!=1)) {
+                    ret = -10;
+                } else
+                    ret = MmaplistAddCompressedBlock(mapping->mmaplist, blocks[i].type, src, blocks[i].compsize, blocks[i].block.block, blocks[i].block.size, delta_map, mapping->start);
+                box_free(src);
+            }
+            if(ret) {
                 printf_log(LOG_NONE, "Error while doing relocation on a DynaCache (block %d)\n", i);
                 fclose(f);
                 return DCERR_RELOC;
             }
-            p+=blocks[i].size;
+            p+=(blocks[i].type==COMP_NONE)?blocks[i].block.size:ALIGN(blocks[i].compsize);
         }
         for(size_t i=0; i<header.nLockAddresses; ++i)
             addLockAddress(lockAddresses[i]+delta_map);
