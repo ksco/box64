@@ -37,7 +37,7 @@ void* z_compress(void* src, size_t src_size, int type, size_t* dest_size)
         return NULL;
     size_t sz = libz_compressBound(src_size);
     void* dest = box_malloc(sz);
-    int ret = libz_compress2(dest, &sz, src, src_size, (type==COMP_Z_MAX)?9:-1);
+    int ret = libz_compress2(dest, &sz, src, src_size, (type==COMP_Z_MAX)?-1:1);
     if(ret) {
         printf_log(LOG_DEBUG, "Failed to compress a DynaCache block (%d)\n", ret);
         box_free(dest);

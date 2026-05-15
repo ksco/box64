@@ -822,8 +822,8 @@ Maximum size, in MiB, for the DynaCache folder. When the limit is exceeded, inva
 Compress or not DynaCache files on disk
 
  * 0: Do not compress dynacache files
- * 1: Compress dynacache files using Zlib with default compression. [Default]
- * 2: Compress dynacache files using ZLib with maximum compression.
+ * 1: Compress dynacache files using Zlib with fastest compression. [Default]
+ * 2: Compress dynacache files using ZLib with default compression.
 
 ### BOX64_DYNACACHE_MIN
 

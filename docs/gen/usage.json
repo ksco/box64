@@ -1042,12 +1042,12 @@
       },
       {
         "key": "1",
-        "description": "Compress dynacache files using Zlib with default compression.",
+        "description": "Compress dynacache files using Zlib with fastest compression.",
         "default": true
       },
       {
         "key": "2",
-        "description": "Compress dynacache files using ZLib with maximum compression.",
+        "description": "Compress dynacache files using ZLib with default compression.",
         "default": false
       }
     ]
