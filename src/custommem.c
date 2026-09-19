@@ -530,6 +530,7 @@ void add_blockstree(uintptr_t start, uintptr_t end, int idx)
         return;
     }
     reent = 1;
+    mutex_lock(&mutex_blocks);
     blockstree_start = blockstree_end = 0;
     rb_set(blockstree, start, end, idx);
     while(blockstree_start || blockstree_end) {
@@ -539,6 +540,7 @@ void add_blockstree(uintptr_t start, uintptr_t end, int idx)
         blockstree_start = blockstree_end = 0;
         rb_set(blockstree, start, end, idx);
     }
+    mutex_unlock(&mutex_blocks);
     reent = 0;
 }
 
@@ -546,7 +548,10 @@ void* box32_dynarec_mmap(size_t size, int fd, off_t offset);
 #ifdef BOX32
 int isCustomAddr(void* p)
 {
-    return findBlock((uintptr_t)p)?1:0;
+    mutex_lock(&mutex_blocks);
+    int ret = findBlock((uintptr_t)p)?1:0;
+    mutex_unlock(&mutex_blocks);
+    return ret;
 }
 #endif
 #ifdef DYNAREC

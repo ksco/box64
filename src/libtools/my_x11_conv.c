@@ -361,6 +361,14 @@ void refreshDisplay(void* dpy)
     // update some of the values now that the screen is locked
     my_XDisplay_t* src = dpy;
     my_XDisplay_32_t* dst = FindDisplay(dpy);
+    int found = 0;
+    for(int i=0; i<N_DISPLAY && !found; ++i)
+        if(dst==&my32_Displays_32[i])
+            found = 1;
+    if(!found) {
+        printf_log(LOG_INFO, "Warning, refreshDisplay on unknown Display %p, ignoring\n", dpy);
+        return;
+    }
     // sync last request
     dst->request = src->request;
     // num lock
@@ -376,11 +384,9 @@ void refreshDisplay(void* dpy)
     }
     // functions
     bridge_t* system = my_context->libx11->w.bridge;
-    int N = -1;
-    for(int i=0; i<N_DISPLAY && (N==-1); ++i) {
-        if(my32_Displays_64[i]==dpy)
-            N = i;
-    }
+    int N = (int)(dst - my32_Displays_32);
+    if(N<0 || N>=N_DISPLAY)
+        return;
     struct my_XFreeFuncs_32 *free_funcs = &my32_free_funcs_32[N];
     dst->free_funcs = (src->free_funcs)?to_ptrv(free_funcs):0;
     struct my_XLockPtrs_32 *lock_fns = &my32_lock_fns_32[N];
@@ -439,23 +445,6 @@ void convert_XWMints_to_64(void* d, void* s)
 
     dst->flags = flags;
 }
-void inplace_enlarge_wmhints(void* hints)
-{
-    if(!hints) return;
-    my_XWMHints_32_t* src = hints;
-    my_XWMHints_t* dst = hints;
-    long flags = from_long(src->flags);
-    // reverse order
-    if(flags&XWMHint_WindowGroupHint)   dst->window_group = from_ulong(src->window_group);
-    if(flags&XWMHint_IconMaskHint)      dst->icon_mask = from_ulong(src->icon_mask);
-    if(flags&XWMHint_IconPositionHint)  {dst->icon_y = src->icon_y; dst->icon_x = src->icon_x;}
-    if(flags&XWMHint_IconWindowHint)    dst->icon_window = from_ulong(src->icon_window);
-    if(flags&XWMHint_IconPixmapHint)    dst->icon_pixmap = from_ulong(src->icon_pixmap);
-    if(flags&XWMHint_StateHint)         dst->initial_state = src->initial_state;
-    if(flags&XWMHint_InputHint)         dst->input = src->input;
-
-    dst->flags = flags;
-}
 void inplace_shrink_wmhints(void* hints)
 {
     if(!hints) return;
@@ -480,20 +469,6 @@ void convert_XSizeHints_to_64(void* d, void *s)
     long flags = to_long(*(long_t*)s);
     memcpy(d+8, s+4, 17*4);
     *(long*)d = flags;
-}
-void inplace_enlarge_wmsizehints(void* hints)
-{
-    //XSizeHints is a long flag and 17*int...
-    long flags = to_long(*(long_t*)hints);
-    memmove(hints+8, hints+4, 17*4);
-    *(long*)hints = flags;
-}
-void inplace_shrink_wmsizehints(void* hints)
-{
-    //XSizeHints is a long flag and 17*int...
-    long_t flags = from_long(*(long*)hints);
-    memmove(hints+4, hints+8, 17*4);
-    *(long_t*)hints = flags;
 }
 
 void convert_XWindowAttributes_to_32(void* dpy, void* d, void* s)
