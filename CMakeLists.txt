@@ -471,6 +471,7 @@ set(ELFLOADER_SRC
     "${BOX64_ROOT}/src/libtools/myalign.c"
     "${BOX64_ROOT}/src/libtools/signals.c"
     "${BOX64_ROOT}/src/libtools/sigtools.c"
+    "${BOX64_ROOT}/src/libtools/ogg32.c"
     "${BOX64_ROOT}/src/libtools/syscall_user_dispatch.c"
     "${BOX64_ROOT}/src/libtools/decopcode.c"
     "${BOX64_ROOT}/src/libtools/threads.c"

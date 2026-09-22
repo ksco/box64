@@ -127,7 +127,7 @@ typedef struct elfheader_s {
     int         init_done;
     int         fini_done;
     int         refcnt;     // ref count for the elf
-    int         malloc_hook_2;  // this elf hook malloc, hacking it
+    int         own_allocator;  // this elf provides the process allocator
     int         gnuunique;  // set if contains some STB_GNU_UNIQUE binding, preventing dlclose to unload the lib
     int         dynamic_patched;
 

@@ -712,7 +712,7 @@ void setupTrace()
 #endif
 }
 #ifndef STATICBUILD
-void endMallocHook();
+void EndGuestAllocator();
 #endif
 
 void finiPendingDLOpenedNoUnload(x64emu_t* emu);
@@ -763,7 +763,7 @@ void endBox64()
             DecRefCount(&needed->libs[i], emu);
     // all done, free context
     #ifndef STATICBUILD
-    endMallocHook();
+    EndGuestAllocator();
     #endif
     SerializeAllMapping();   // to be safe
     FreeBox64Context(&my_context);
