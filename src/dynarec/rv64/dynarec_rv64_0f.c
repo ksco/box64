@@ -509,6 +509,8 @@ uintptr_t dynarec64_0F(dynarec_rv64_t* dyn, uintptr_t addr, uintptr_t ip, int ni
                 SLLI(x3, x3, box64_rdtsc_shift);
             }
             SRLI(xRDX, x3, 32);
+            MARKREGd(xRAX);
+            MARKREGd(xRDX);
             ZEXTW2(xRAX, x3); // wipe upper part
             break;
         case 0x38:
@@ -1081,15 +1083,16 @@ uintptr_t dynarec64_0F(dynarec_rv64_t* dyn, uintptr_t addr, uintptr_t ip, int ni
         GETFLAGS;                                                                                \
     }                                                                                            \
     nextop = F8;                                                                                 \
-    GETGD;                                                                                       \
+    GETGDsd;                                                                                     \
     if (MODREG) {                                                                                \
         ed = TO_NAT((nextop & 7) + (rex.b << 3));                                                \
+        MARKREGs(ed);                                                                            \
         if (dyn->insts[ninst].nat_flags_fusion) {                                                \
             NATIVEMV(NATYES, gd, ed);                                                            \
         } else {                                                                                 \
             MV##YES(gd, ed, tmp1);                                                               \
         }                                                                                        \
-        if (!rex.w) ZEROUP(gd);                                                                  \
+        if (NEED_ZEROUP(gd)) ZEROUP_RESULT(gd);                                                  \
     } else {                                                                                     \
         addr = geted(dyn, addr, ninst, nextop, &ed, tmp2, tmp3, &fixedaddress, rex, NULL, 1, 0); \
         if (dyn->insts[ninst].nat_flags_fusion) {                                                \
@@ -1098,7 +1101,7 @@ uintptr_t dynarec64_0F(dynarec_rv64_t* dyn, uintptr_t addr, uintptr_t ip, int ni
             B##NO(tmp1, 8);                                                                      \
         }                                                                                        \
         LDxw(gd, ed, fixedaddress);                                                              \
-        if (!rex.w) ZEROUP(gd);                                                                  \
+        if (NEED_ZEROUP(gd)) ZEROUP_RESULT(gd);                                                  \
     }
 
             GOCOND(0x40, "CMOV", "Gd, Ed");
@@ -1106,7 +1109,7 @@ uintptr_t dynarec64_0F(dynarec_rv64_t* dyn, uintptr_t addr, uintptr_t ip, int ni
         case 0x50:
             INST_NAME("MOVMSKPS Gd, Ex");
             nextop = F8;
-            GETGD;
+            GETGDd;
             GETEX(x1, 0, 12);
             XOR(gd, gd, gd);
             for (int i = 0; i < 4; ++i) {
@@ -1935,11 +1938,12 @@ uintptr_t dynarec64_0F(dynarec_rv64_t* dyn, uintptr_t addr, uintptr_t ip, int ni
             v0 = mmx_get_reg(dyn, ninst, x1, x2, x3, gd);
             if (MODREG) {
                 ed = TO_NAT((nextop & 7) + (rex.b << 3));
+                MARKREGd(ed);
                 if (rex.w)
                     FMVXD(ed, v0);
                 else {
                     FMVXW(ed, v0);
-                    ZEROUP(ed);
+                    if (NEED_ZEROUP(ed)) ZEROUP_RESULT(ed);
                 }
             } else {
                 addr = geted(dyn, addr, ninst, nextop, &wback, x3, x2, &fixedaddress, rex, NULL, 1, 0);
@@ -2459,7 +2463,7 @@ uintptr_t dynarec64_0F(dynarec_rv64_t* dyn, uintptr_t addr, uintptr_t ip, int ni
         case 0xB6:
             INST_NAME("MOVZX Gd, Eb");
             nextop = F8;
-            GETGD;
+            GETGDd;
             SCRATCH_USAGE(0);
             if (MODREG) {
                 if (rex.rex) {
@@ -2773,7 +2777,7 @@ uintptr_t dynarec64_0F(dynarec_rv64_t* dyn, uintptr_t addr, uintptr_t ip, int ni
             INST_NAME("XADD Ed, Gd");
             SETFLAGS(X_ALL, SF_SET_PENDING, NAT_FLAGS_FUSION);
             nextop = F8;
-            GETGD;
+            GETGDsd;
             GETED(0);
             if (ed != gd)
                 MV(x7, ed);
@@ -2969,6 +2973,7 @@ uintptr_t dynarec64_0F(dynarec_rv64_t* dyn, uintptr_t addr, uintptr_t ip, int ni
         case 0xCF:
             INST_NAME("BSWAP Reg");
             gd = TO_NAT((opcode & 7) + (rex.b << 3));
+            MARKREGsd(gd);
             REV8xw(gd, gd, x1, x2, x3, x4);
             break;
         case 0xD1:
@@ -3554,6 +3559,7 @@ uintptr_t dynarec64_0F(dynarec_rv64_t* dyn, uintptr_t addr, uintptr_t ip, int ni
             break;
         case 0xF7:
             INST_NAME("MASKMOVQ Gm, Em");
+            UP32_READ(xRDI);
             nextop = F8;
             GETGM();
             GETEM(x5, 0, 7);
