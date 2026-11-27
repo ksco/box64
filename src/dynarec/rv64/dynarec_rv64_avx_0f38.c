@@ -176,20 +176,46 @@ uintptr_t dynarec64_AVX_0F38(dynarec_rv64_t* dyn, uintptr_t addr, uintptr_t ip, 
             GETED(0);
             GETVD;
             CLEAR_FLAGS();
-            ANDI(x4, vd, 0xff);
-            ADDI(x5, xZR, rex.w ? 64 : 32);
-            BGE_MARK(x4, x5);
-            ADDI(x6, xZR, -1);
-            SLL(x6, x6, x4);
-            ANDN(gd, ed, x6, x6);
-            B_MARK2_nocond;
-            MARK;
-            MV(gd, ed);
-            IFX (X_CF) {
-                ORI(xFlags, xFlags, 1 << F_CF);
-            }
-            MARK2;
-            if (!rex.w) {
+            if (rex.w) {
+                ANDI(x4, vd, 0xc0);
+                if (cpuext.zicond) {
+                    ADDI(x6, xZR, -1);
+                    SLL(x6, x6, vd);
+                    CZERO_NEZ(x6, x6, x4);
+                    IFX (X_CF) { SNEZ(x4, x4); }
+                } else {
+                    SNEZ(x4, x4);
+                    ADDI(x6, x4, -1);
+                    SLL(x6, x6, vd);
+                }
+                IFX (X_CF) { OR(xFlags, xFlags, x4); }
+                ANDN(gd, ed, x6, x6);
+            } else if (cpuext.zbb) {
+                ANDI(x4, vd, 0xff);
+                ADDI(x5, xZR, 32);
+                MINU(x4, x4, x5);
+                IFX (X_CF) {
+                    SRLI(x5, x4, 5);
+                    OR(xFlags, xFlags, x5);
+                }
+                ADDI(x6, xZR, -1);
+                SLL(x6, x6, x4);
+                ANDN_(gd, ed, x6);
+            } else {
+                ANDI(x4, vd, 0xff);
+                ADDI(x5, xZR, 32);
+                BGE_MARK(x4, x5);
+                ADDI(x6, xZR, -1);
+                SLL(x6, x6, x4);
+                NOT(x6, x6);
+                AND(gd, ed, x6);
+                B_MARK2_nocond;
+                MARK;
+                MV(gd, ed);
+                IFX (X_CF) {
+                    ORI(xFlags, xFlags, 1 << F_CF);
+                }
+                MARK2;
                 ZEROUP(gd);
             }
             IFX (X_ZF) {
@@ -209,22 +235,36 @@ uintptr_t dynarec64_AVX_0F38(dynarec_rv64_t* dyn, uintptr_t addr, uintptr_t ip, 
             GETGDd;
             GETED(0);
             GETVD;
-            ANDI(x4, vd, 0xff);       // start
-            SRLI(x3, vd, 8);
-            ANDI(x3, x3, 0xff);       // length
-            XOR(x5, x5, x5);
-            BEQZ_MARK(x3);
-            ADDI(x6, xZR, rex.w ? 64 : 32);
-            BGE_MARK(x4, x6);
-            SRLxw(x5, ed, x4);
-            BLT_MARK(x6, x3);
-            SUBxw(x6, x6, x3);
-            SLLxw(x5, x5, x6);
-            SRLxw(x5, x5, x6);
-            MARK;
-            OR(gd, x5, x5);
-            if (!rex.w) {
-                ZEROUP(gd);
+            if (cpuext.zicond) {
+                if (!rex.w && MODREG) {
+                    ZEXTW2(x2, ed);
+                    ed = x2;
+                }
+                ANDI(x4, vd, 0xc0);
+                SRLI(x3, vd, 8);
+                ANDI(x6, x3, 0xc0);
+                ADDI(x5, xZR, -1);
+                SLL(x5, x5, x3);
+                SRL(x3, ed, vd);
+                CZERO_NEZ(x5, x5, x6);
+                ANDN(x3, x3, x5, x5);
+                CZERO_NEZ(gd, x3, x4);
+            } else {
+                ANDI(x4, vd, 0xff);       // start
+                SRLI(x3, vd, 8);
+                ANDI(x3, x3, 0xff);       // length
+                XOR(x5, x5, x5);
+                BEQZ_MARK(x3);
+                ADDI(x6, xZR, rex.w ? 64 : 32);
+                BGE_MARK(x4, x6);
+                SRLxw(x5, ed, x4);
+                BLT_MARK(x6, x3);
+                SUBxw(x6, x6, x3);
+                SLLxw(x5, x5, x6);
+                SRLxw(x5, x5, x6);
+                MARK;
+                MV(gd, x5);
+                if (!rex.w) ZEROUP(gd);
             }
             CLEAR_FLAGS();
             IFX (X_ZF) {
