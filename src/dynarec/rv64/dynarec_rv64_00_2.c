@@ -834,7 +834,8 @@ uintptr_t dynarec64_00_2(dynarec_rv64_t* dyn, uintptr_t addr, uintptr_t ip, int 
             UP32_READ(xRDI);
             switch (rex.rep) {
                 case 1:
-                case 2:
+                case 2: {
+                    const int compare_words = rex.rep == 2 && !rex.is32bits && !rex.is67;
                     UP32_READ(xRCX);
                     if (rex.rep == 1) {
                         INST_NAME("REPNZ CMPSB");
@@ -853,34 +854,88 @@ uintptr_t dynarec64_00_2(dynarec_rv64_t* dyn, uintptr_t addr, uintptr_t ip, int 
                     }
                     ANDI(x1, xFlags, 1 << F_DF);
                     BNEZ_MARK2(x1);
-                    MARK; // Part with DF==0
-                    LBU(x1, xRSI, 0);
-                    LBU(x2, xRDI, 0);
-                    ADDI(xRSI, xRSI, 1);
-                    ADDI(xRDI, xRDI, 1);
-                    SUBI(xRCX, xRCX, 1);
-                    if (rex.rep == 1) {
-                        BEQ_MARK3(x1, x2);
-                    } else {
+                    if (compare_words) {
+                        LBU(x1, xRSI, 0);
+                        LBU(x2, xRDI, 0);
+                        ADDI(xRSI, xRSI, 1);
+                        ADDI(xRDI, xRDI, 1);
+                        SUBI(xRCX, xRCX, 1);
                         BNE_MARK3(x1, x2);
+                        BEQZ_MARK3(xRCX);
+                        ADDI(x5, xZR, 15);
+                        Bxx_gen(GEU, MARK4, xRCX, x5);
+                    }
+                    MARK; // Part with DF==0
+                    for (int byte = 0; byte < (compare_words ? 2 : 1); ++byte) {
+                        if (byte) {
+                            BEQZ_MARK3(xRCX);
+                        }
+                        LBU(x1, xRSI, 0);
+                        LBU(x2, xRDI, 0);
+                        ADDI(xRSI, xRSI, 1);
+                        ADDI(xRDI, xRDI, 1);
+                        SUBI(xRCX, xRCX, 1);
+                        if (rex.rep == 1) {
+                            BEQ_MARK3(x1, x2);
+                        } else {
+                            BNE_MARK3(x1, x2);
+                        }
                     }
                     BNEZ_MARK(xRCX);
                     B_MARK3_nocond;
                     MARK2; // Part with DF==1
-                    LBU(x1, xRSI, 0);
-                    LBU(x2, xRDI, 0);
-                    SUBI(xRSI, xRSI, 1);
-                    SUBI(xRDI, xRDI, 1);
-                    SUBI(xRCX, xRCX, 1);
-                    if (rex.rep == 1) {
-                        BEQ_MARK3(x1, x2);
-                    } else {
-                        BNE_MARK3(x1, x2);
+                    for (int byte = 0; byte < (compare_words ? 2 : 1); ++byte) {
+                        if (byte) {
+                            BEQZ_MARK3(xRCX);
+                        }
+                        LBU(x1, xRSI, 0);
+                        LBU(x2, xRDI, 0);
+                        SUBI(xRSI, xRSI, 1);
+                        SUBI(xRDI, xRDI, 1);
+                        SUBI(xRCX, xRCX, 1);
+                        if (rex.rep == 1) {
+                            BEQ_MARK3(x1, x2);
+                        } else {
+                            BNE_MARK3(x1, x2);
+                        }
                     }
                     BNEZ_MARK2(xRCX);
+                    if (compare_words) {
+                        B_MARK3_nocond;
+                        MARK4;
+                        XOR(x4, xRSI, xRDI);
+                        ANDI(x4, x4, 7);
+                        BNE_MARK(x4, xZR);
+                        NEG(x4, xRSI);
+                        ANDI(x4, x4, 7);
+                        BEQ_MARKi(x4, xZR, 5);
+                        MARKi(4);
+                        LBU(x1, xRSI, 0);
+                        LBU(x2, xRDI, 0);
+                        ADDI(xRSI, xRSI, 1);
+                        ADDI(xRDI, xRDI, 1);
+                        SUBI(xRCX, xRCX, 1);
+                        BNE_MARK3(x1, x2);
+                        SUBI(x4, x4, 1);
+                        BNE_MARKi(x4, xZR, 4);
+                        MARKi(5);
+                        ADDI(x5, xZR, 8);
+                        MARKLOCK;
+                        LD(x1, xRSI, 0);
+                        LD(x2, xRDI, 0);
+                        BNE_MARK(x1, x2);
+                        ADDI(xRSI, xRSI, 8);
+                        ADDI(xRDI, xRDI, 8);
+                        SUBI(xRCX, xRCX, 8);
+                        Bxx_gen(GEU, MARKLOCK, xRCX, x5);
+                        BNEZ_MARK(xRCX);
+                        SRLI(x1, x1, 56);
+                        SRLI(x2, x2, 56);
+                    }
                     MARK3; // end
                     emit_cmp8(dyn, ninst, x1, x2, x3, x4, x5, x6);
                     break;
+                }
                 default:
                     INST_NAME("CMPSB");
                     SETFLAGS(X_ALL, SF_SET_PENDING, NAT_FLAGS_NOFUSION);
@@ -1145,7 +1200,9 @@ uintptr_t dynarec64_00_2(dynarec_rv64_t* dyn, uintptr_t addr, uintptr_t ip, int 
             UP32_READ(xRAX);
             switch (rex.rep) {
                 case 1:
-                case 2:
+                case 2: {
+                    const int has_byte_search = cpuext.zbb || cpuext.xtheadbb;
+                    const int scan_words = !rex.is32bits && !rex.is67 && (rex.rep == 2 || has_byte_search);
                     UP32_READ(xRCX);
                     if (rex.rep == 1) {
                         INST_NAME("REPNZ SCASB");
@@ -1164,30 +1221,113 @@ uintptr_t dynarec64_00_2(dynarec_rv64_t* dyn, uintptr_t addr, uintptr_t ip, int 
                     }
                     ANDI(x2, xFlags, 1 << F_DF);
                     BNEZ_MARK2(x2);
+                    if (scan_words) {
+                        ADDI(x5, xZR, 32);
+                        Bxx_gen(GEU, MARK4, xRCX, x5);
+                    }
                     MARK; // Part with DF==0
-                    LBU(x2, xRDI, 0);
-                    ADDI(xRDI, xRDI, 1);
-                    SUBI(xRCX, xRCX, 1);
-                    if (rex.rep == 1) {
-                        BEQ_MARK3(x1, x2);
-                    } else {
-                        BNE_MARK3(x1, x2);
+                    for (int byte = 0; byte < (scan_words ? 2 : 1); ++byte) {
+                        if (byte) {
+                            BEQZ_MARK3(xRCX);
+                        }
+                        LBU(x2, xRDI, 0);
+                        ADDI(xRDI, xRDI, 1);
+                        SUBI(xRCX, xRCX, 1);
+                        if (rex.rep == 1) {
+                            BEQ_MARK3(x1, x2);
+                        } else {
+                            BNE_MARK3(x1, x2);
+                        }
                     }
                     BNE_MARK(xRCX, xZR);
                     B_MARK3_nocond;
                     MARK2; // Part with DF==1
-                    LBU(x2, xRDI, 0);
-                    SUBI(xRDI, xRDI, 1);
-                    SUBI(xRCX, xRCX, 1);
-                    if (rex.rep == 1) {
-                        BEQ_MARK3(x1, x2);
-                    } else {
-                        BNE_MARK3(x1, x2);
+                    for (int byte = 0; byte < (scan_words ? 2 : 1); ++byte) {
+                        if (byte) {
+                            BEQZ_MARK3(xRCX);
+                        }
+                        LBU(x2, xRDI, 0);
+                        SUBI(xRDI, xRDI, 1);
+                        SUBI(xRCX, xRCX, 1);
+                        if (rex.rep == 1) {
+                            BEQ_MARK3(x1, x2);
+                        } else {
+                            BNE_MARK3(x1, x2);
+                        }
                     }
                     BNE_MARK2(xRCX, xZR);
+                    if (scan_words) {
+                        B_MARK3_nocond;
+                        MARK4;
+                        NEG(x4, xRDI);
+                        ANDI(x4, x4, 7);
+                        BEQ_MARKi(x4, xZR, 5);
+                        MARKi(4);
+                        LBU(x2, xRDI, 0);
+                        ADDI(xRDI, xRDI, 1);
+                        SUBI(xRCX, xRCX, 1);
+                        if (rex.rep == 1) {
+                            BEQ_MARK3(x1, x2);
+                        } else {
+                            BNE_MARK3(x1, x2);
+                        }
+                        SUBI(x4, x4, 1);
+                        BNE_MARKi(x4, xZR, 4);
+                        MARKi(5);
+                        TABLE64_(x6, 0x0101010101010101ULL);
+                        MUL(x6, x6, x1);
+                        ADDI(x5, xZR, 8);
+                        if (rex.rep == 1 && cpuext.zbb) {
+                            ADDI(x3, xZR, -1);
+                        }
+                        MARKLOCK;
+                        LD(x2, xRDI, 0);
+                        XOR(x4, x2, x6);
+                        if (rex.rep == 1 && cpuext.zbb) {
+                            ORCB(x4, x4);
+                            BNE_MARKLOCK2(x4, x3);
+                        } else if (has_byte_search) {
+                            if (rex.rep == 1) {
+                                TH_TSTNBZ(x4, x4);
+                            }
+                            BNEZ_MARKLOCK2(x4);
+                        } else {
+                            BNEZ_MARK(x4);
+                        }
+                        ADDI(xRDI, xRDI, 8);
+                        SUBI(xRCX, xRCX, 8);
+                        Bxx_gen(GEU, MARKLOCK, xRCX, x5);
+                        BNEZ_MARK(xRCX);
+                        SRLI(x2, x2, 56);
+                        if (has_byte_search) {
+                            B_MARK3_nocond;
+                            MARKLOCK2;
+                            if (cpuext.zbb) {
+                                if (rex.rep == 1) {
+                                    NOT(x4, x4);
+                                }
+                                CTZ(x4, x4);
+                            } else {
+                                TH_REV(x4, x4);
+                                TH_FF1(x4, x4);
+                            }
+                            if (rex.rep == 1) {
+                                MV(x2, x1);
+                            } else {
+                                ANDI(x5, x4, -8);
+                                SRL(x2, x2, x5);
+                                ANDI(x2, x2, 0xff);
+                            }
+                            SRLI(x4, x4, 3);
+                            ADDI(x4, x4, 1);
+                            ADD(xRDI, xRDI, x4);
+                            SUB(xRCX, xRCX, x4);
+                        }
+                    }
                     MARK3; // end
                     emit_cmp8(dyn, ninst, x1, x2, x3, x4, x5, x6);
                     break;
+                }
                 default:
                     INST_NAME("SCASB");
                     SETFLAGS(X_ALL, SF_SET_PENDING, NAT_FLAGS_NOFUSION);
