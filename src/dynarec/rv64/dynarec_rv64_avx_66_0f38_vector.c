@@ -891,12 +891,14 @@ uintptr_t dynarec64_AVX_66_0F38_vector(dynarec_rv64_t* dyn, uintptr_t addr, uint
                 SMWRITE2();
             }
             break;
-        case 0x92:
+        case 0x92: {
             INST_NAME("VGATHERDPS Gx, VSIB, Vx");
             nextop = F8;
             if (rex.w || ((nextop & 7) != 4) || MODREG) return 0;
             u8 = F8;
             gd = ((nextop & 0x38) >> 3) + (rex.r << 3);
+            int index = ((u8 >> 3) & 7) + (rex.x << 3);
+            if (gd == vex.v || gd == index || vex.v == index) return 0;
             if ((u8 & 7) == 5 && !(nextop & 0xC0)) {
                 int64_t i64 = F32S64;
                 MOV64x(x5, i64);
@@ -918,25 +920,32 @@ uintptr_t dynarec64_AVX_66_0F38_vector(dynarec_rv64_t* dyn, uintptr_t addr, uint
                     ADD(x5, x5, x4);
                 }
             }
-            ed = ((u8 >> 3) & 7) + (rex.x << 3);
             SMREAD();
-            q0 = vpu_get_scratch(dyn);
-            simd_load_reg(dyn, ninst, x1, q0, vex.v, 16 << vex.l, VECTOR_SEW32);
-            q1 = vpu_get_scratch(dyn);
-            simd_load_reg(dyn, ninst, x1, q1, ed, 16 << vex.l, VECTOR_SEW32);
-            GETGY_vector(q2, VECTOR_SEW32);
-            q4 = vpu_get_scratch_lmul(dyn, VECTOR_LMUL2);
-            rvv_set_vl_for_width(dyn, ninst, x1, VECTOR_SEW64, VECTOR_LMUL2, (32 << vex.l));
-            VSEXT_VF2(q4, q1, VECTOR_UNMASKED);
-            if (u8 >> 6) VSLL_VI(q4, q4, u8 >> 6, VECTOR_UNMASKED);
-            SET_AVX_VECTOR_WIDTH(x1, VECTOR_SEW32);
+            unsigned width = 16 << vex.l;
+            unsigned regions = vex.l ? SIMD_YMM : SIMD_XMM;
+            unsigned grouping = cpuext.vlen >= 2 * width ? VECTOR_LMULF2 : VECTOR_LMUL1;
+            unsigned index_grouping = grouping == VECTOR_LMULF2 ? VECTOR_LMUL1 : VECTOR_LMUL2;
+            q0 = simd_access(dyn, ninst, x1, vex.v, regions, 0);
+            q1 = simd_access(dyn, ninst, x1, index, regions, 0);
+            q2 = simd_access(dyn, ninst, x1, gd, regions, 0);
+            int offsets = vpu_get_scratch_lmul(dyn, index_grouping);
+            if (u8 >> 6) {
+                rvv_set_vl_for_width(dyn, ninst, x1, VECTOR_SEW32, grouping, width);
+                ADDI(x4, xZR, 1 << (u8 >> 6));
+                VWMUL_VX(offsets, q1, x4, VECTOR_UNMASKED);
+            } else {
+                rvv_set_vl_for_width(dyn, ninst, x1, VECTOR_SEW64, index_grouping, 2 * width);
+                VSEXT_VF2(offsets, q1, VECTOR_UNMASKED);
+            }
+            rvv_set_vl_for_width(dyn, ninst, x1, VECTOR_SEW32, grouping, width);
             VMSLT_VX(VMASK, q0, xZR, VECTOR_UNMASKED);
-            VLUXEI64_V(q2, q4, x5, VECTOR_MASKED, VECTOR_NFIELD1);
+            VLUXEI64_V(q2, offsets, x5, VECTOR_MASKED, VECTOR_NFIELD1);
             VAND_VX(q0, q0, xZR, VECTOR_MASKED);
             PUTGY_vector(q2, VECTOR_SEW32);
             gd = vex.v;
             PUTGY_vector(q0, VECTOR_SEW32);
             break;
+        }
         case 0x98:
             INST_NAME("VFMADD132PS/D Gx, Vx, Ex");
             nextop = F8;
