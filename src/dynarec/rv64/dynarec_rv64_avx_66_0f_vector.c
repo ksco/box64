@@ -250,33 +250,7 @@ uintptr_t dynarec64_AVX_66_0F_vector(dynarec_rv64_t* dyn, uintptr_t addr, uintpt
             nextop = F8;
             GETEY_vector(v1, 0, VECTOR_SEW64);
             GETGY_empty_vector(v0);
-            if (v0 == v1) {
-                v2 = vpu_get_scratch(dyn);
-                VMV_V_V(v2, v1);
-                v1 = v2;
-            }
-            if (BOX64ENV(dynarec_fastround)) {
-                VFSQRT_V(v0, v1, VECTOR_UNMASKED);
-            } else {
-                VFSQRT_V(v0, v1, VECTOR_UNMASKED);
-            }
-            if (!BOX64ENV(dynarec_fastnan)) {
-                q2 = vpu_get_scratch(dyn);
-                d0 = vpu_get_scratch(dyn);
-                d1 = vpu_get_scratch(dyn);
-                MOV64x(x4, 0x0008000000000000LL);
-                VOR_VX(d0, v1, x4, VECTOR_UNMASKED);   // quiet(Vx)
-                VMFNE_VV(q2, v1, v1, VECTOR_UNMASKED); // Vx is NaN
-                VMAND_MM(VMASK, q2, q2);
-                VMERGE_VVM(v0, v0, d0);                // NaN source wins
-                VMFNE_VV(d1, v0, v0, VECTOR_UNMASKED); // result is NaN
-                VMNAND_MM(q2, q2, q2);                 // no input was NaN
-                VMAND_MM(d1, d1, q2);                  // invalid operation
-                MOV64x(x4, 0xfff8000000000000LL);
-                VMV_V_X(d0, x4);
-                VMAND_MM(VMASK, d1, d1);
-                VMERGE_VVM(v0, v0, d0);
-            }
+            simd_packed_sqrt(dyn, ninst, v0, v1, VECTOR_SEW64, 0);
             PUTGY_vector(v0, VECTOR_SEW64);
             break;
         case 0x54:
@@ -314,19 +288,19 @@ uintptr_t dynarec64_AVX_66_0F_vector(dynarec_rv64_t* dyn, uintptr_t addr, uintpt
             PUTGY_vector(v0, VECTOR_SEW64);
             break;
         case 0x58:
-            if (!BOX64ENV(dynarec_fastnan)) return 0;
+            if (!BOX64ENV(dynarec_fastnan) && (!vex.l || !cpuext.zbs)) return 0;
             INST_NAME("VADDPD Gx, Vx, Ex");
             nextop = F8;
             GETGY_empty_VYEY_vector(v0, q0, q1, VECTOR_SEW64);
-            VFADD_VV(v0, q0, q1, VECTOR_UNMASKED);
+            simd_packed_arith(dyn, ninst, v0, q0, q1, VECTOR_SEW64, opcode, 0);
             PUTGY_vector(v0, VECTOR_SEW64);
             break;
         case 0x59:
-            if (!BOX64ENV(dynarec_fastnan)) return 0;
+            if (!BOX64ENV(dynarec_fastnan) && (!vex.l || !cpuext.zbs)) return 0;
             INST_NAME("VMULPD Gx, Vx, Ex");
             nextop = F8;
             GETGY_empty_VYEY_vector(v0, q0, q1, VECTOR_SEW64);
-            VFMUL_VV(v0, q0, q1, VECTOR_UNMASKED);
+            simd_packed_arith(dyn, ninst, v0, q0, q1, VECTOR_SEW64, opcode, v0 != q0 && v0 != q1);
             PUTGY_vector(v0, VECTOR_SEW64);
             break;
         case 0x5A:
@@ -348,11 +322,11 @@ uintptr_t dynarec64_AVX_66_0F_vector(dynarec_rv64_t* dyn, uintptr_t addr, uintpt
             PUTGY_vector(v0, VECTOR_SEW32);
             break;
         case 0x5C:
-            if (!BOX64ENV(dynarec_fastnan)) return 0;
+            if (!BOX64ENV(dynarec_fastnan) && (!vex.l || !cpuext.zbs)) return 0;
             INST_NAME("VSUBPD Gx, Vx, Ex");
             nextop = F8;
             GETGY_empty_VYEY_vector(v0, q0, q1, VECTOR_SEW64);
-            VFSUB_VV(v0, q0, q1, VECTOR_UNMASKED);
+            simd_packed_arith(dyn, ninst, v0, q0, q1, VECTOR_SEW64, opcode, v0 != q0 && v0 != q1);
             PUTGY_vector(v0, VECTOR_SEW64);
             break;
         case 0x5D:

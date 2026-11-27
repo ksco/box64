@@ -419,6 +419,71 @@ void simd_scalar_arith(dynarec_rv64_t* dyn, int ninst, int s1, int dst, int left
     }
 }
 
+void simd_packed_arith(dynarec_rv64_t* dyn, int ninst, int dst, int left, int right, int sew, int opcode, int branch_if_ordered)
+{
+    int j64;
+    MAYUSE(j64);
+    const int strict_nan = !BOX64ENV(dynarec_fastnan);
+    int result = strict_nan && (dst == left || dst == right) ? vpu_get_scratch(dyn) : dst;
+    switch (opcode) {
+        case 0x58: VFADD_VV(result, left, right, VECTOR_UNMASKED); break;
+        case 0x59: VFMUL_VV(result, left, right, VECTOR_UNMASKED); break;
+        case 0x5C: VFSUB_VV(result, left, right, VECTOR_UNMASKED); break;
+    }
+    if (!strict_nan) return;
+
+    const int same_source = left == right;
+    VMFNE_VV(VMASK, result, result, VECTOR_UNMASKED);
+    if (branch_if_ordered) {
+        VFIRST_M(x4, VMASK, VECTOR_UNMASKED);
+        BLT_MARK(x4, xZR);
+    }
+    if (!same_source || opcode == 0x5C) VFSGNJN_VV(result, result, result, VECTOR_MASKED);
+    if (sew == VECTOR_SEW32) {
+        MOV32w(x4, 0x00400000);
+    } else {
+        MOV64x(x4, 0x0008000000000000ULL);
+    }
+    if (!same_source) {
+        VMFNE_VV(VMASK, right, right, VECTOR_UNMASKED);
+        VOR_VX(result, right, x4, VECTOR_MASKED);
+    }
+    if (!same_source || opcode == 0x5C) VMFNE_VV(VMASK, left, left, VECTOR_UNMASKED);
+    VOR_VX(result, left, x4, VECTOR_MASKED);
+    if (branch_if_ordered) MARK;
+    if (result != dst) {
+        VMV_V_V(dst, result);
+    }
+}
+
+void simd_packed_sqrt(dynarec_rv64_t* dyn, int ninst, int dst, int source, int sew, int branch_if_ordered)
+{
+    int j64;
+    MAYUSE(j64);
+    const int strict_nan = !BOX64ENV(dynarec_fastnan);
+    const int result = strict_nan && dst == source ? vpu_get_scratch(dyn) : dst;
+    VFSQRT_V(result, source, VECTOR_UNMASKED);
+    if (!strict_nan) return;
+
+    VMFNE_VV(VMASK, result, result, VECTOR_UNMASKED);
+    if (branch_if_ordered) {
+        VFIRST_M(x4, VMASK, VECTOR_UNMASKED);
+        BLT_MARK(x4, xZR);
+    }
+    VFSGNJN_VV(result, result, result, VECTOR_MASKED);
+    if (sew == VECTOR_SEW32) {
+        MOV32w(x4, 0x00400000);
+    } else {
+        MOV64x(x4, 0x0008000000000000ULL);
+    }
+    VMFNE_VV(VMASK, source, source, VECTOR_UNMASKED);
+    VOR_VX(result, source, x4, VECTOR_MASKED);
+    if (branch_if_ordered) MARK;
+    if (result != dst) {
+        VMV_V_V(dst, result);
+    }
+}
+
 void simd_compare(dynarec_rv64_t* dyn, int ninst, int dst, int left, int right, unsigned predicate)
 {
     int temp = vpu_get_scratch(dyn);

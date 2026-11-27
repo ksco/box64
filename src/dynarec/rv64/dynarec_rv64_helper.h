@@ -1934,6 +1934,8 @@ void simd_reflect(dynarec_rv64_t* dyn, int ninst, int s1, int s2);
 #define simd_copy         STEPNAME(simd_copy)
 #define simd_seed_scalar  STEPNAME(simd_seed_scalar)
 #define simd_scalar_arith STEPNAME(simd_scalar_arith)
+#define simd_packed_arith STEPNAME(simd_packed_arith)
+#define simd_packed_sqrt  STEPNAME(simd_packed_sqrt)
 #define simd_compare      STEPNAME(simd_compare)
 #define simd_aeskeygenassist STEPNAME(simd_aeskeygenassist)
 #define simd_pcmpistri_negative_equal_each STEPNAME(simd_pcmpistri_negative_equal_each)
@@ -1948,6 +1950,8 @@ void simd_pcmpistri_negative_equal_each(dynarec_rv64_t* dyn, int ninst, int left
 void simd_pcmpistr(dynarec_rv64_t* dyn, int ninst, int dst, int left, int right, unsigned control);
 void simd_pcmpestr(dynarec_rv64_t* dyn, int ninst, int dst, int left, int right, unsigned control, int wide_lengths);
 void simd_scalar_arith(dynarec_rv64_t* dyn, int ninst, int s1, int dst, int left, int right, int sew, int opcode);
+void simd_packed_arith(dynarec_rv64_t* dyn, int ninst, int dst, int left, int right, int sew, int opcode, int branch_if_ordered);
+void simd_packed_sqrt(dynarec_rv64_t* dyn, int ninst, int dst, int source, int sew, int branch_if_ordered);
 #define simd_commit      STEPNAME(simd_commit)
 #define simd_get_reg     STEPNAME(simd_get_reg)
 #define simd_forget_reg  STEPNAME(simd_forget_reg)
