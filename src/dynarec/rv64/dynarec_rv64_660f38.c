@@ -923,16 +923,22 @@ uintptr_t dynarec64_660F38(dynarec_rv64_t* dyn, uintptr_t addr, uint8_t opcode, 
                             SLTU(x5, x4, gd);
                             ADD(gd, x4, x3);
                             SLTU(x6, gd, x4);
+                            OR(x5, x5, x6);
                         } else {
-                            ADDW(x4, gd, ed);
-                            ZEROUP(x4);
-                            ZEROUP(gd);
-                            SLTU(x5, x4, gd);
-                            ADDW(gd, x4, x3);
-                            ZEROUP(gd);
-                            SLTU(x6, gd, x4);
+                            if (MODREG) {
+                                ZEXTW2(x5, ed);
+                                ed = x5;
+                            }
+                            if (cpuext.zba) {
+                                ADDUW(x4, gd, ed);
+                            } else {
+                                ZEXTW2(x4, gd);
+                                ADD(x4, x4, ed);
+                            }
+                            ADD(x4, x4, x3);
+                            SRLI(x5, x4, 32);
+                            ZEXTW2(gd, x4);
                         }
-                        OR(x5, x5, x6);
                         ANDI(xFlags, xFlags, ~(1 << F_CF));
                         OR(xFlags, xFlags, x5);
                     } else {

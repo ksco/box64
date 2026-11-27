@@ -822,16 +822,22 @@ uintptr_t dynarec64_F30F(dynarec_rv64_t* dyn, uintptr_t addr, uintptr_t ip, int 
                             SLTU(x5, x4, gd);
                             ADD(gd, x4, x3);
                             SLTU(x6, gd, x4);
+                            OR(x5, x5, x6);
                         } else {
-                            ADDW(x4, gd, ed);
-                            ZEXTW2(x4, x4);
-                            ZEXTW2(gd, gd);
-                            SLTU(x5, x4, gd);
-                            ADDW(gd, x4, x3);
-                            ZEXTW2(gd, gd);
-                            SLTU(x6, gd, x4);
+                            if (MODREG) {
+                                ZEXTW2(x5, ed);
+                                ed = x5;
+                            }
+                            if (cpuext.zba) {
+                                ADDUW(x4, gd, ed);
+                            } else {
+                                ZEXTW2(x4, gd);
+                                ADD(x4, x4, ed);
+                            }
+                            ADD(x4, x4, x3);
+                            SRLI(x5, x4, 32);
+                            ZEXTW2(gd, x4);
                         }
-                        OR(x5, x5, x6);
                         ANDI(xFlags, xFlags, ~(1 << F_OF2));
                         SLLI(x5, x5, F_OF2);
                         OR(xFlags, xFlags, x5);
