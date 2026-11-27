@@ -2007,11 +2007,23 @@ void emit_shrd32(dynarec_rv64_t* dyn, int ninst, rex_t rex, int s1, int s2, int 
         SLLI(s3, s3, F_OF2);
         OR(xFlags, xFlags, s3);
     }
-    ADDI(s4, xZR, (rex.w ? 64 : 32));
-    SUB(s4, s4, s5);
-    SRLxw(s3, s1, s5);
-    SLLxw(s4, s2, s4);
-    OR(s1, s4, s3);
+    if (s1 == s2 && cpuext.zbb) {
+        RORxw(s1, s1, s5);
+    } else if (!rex.w && cpuext.zba && (dyn->insts[ninst].x64.gen_flags & X_CF)) {
+        SLLI(s4, s2, 32);
+        ADDUW(s4, s1, s4);
+        SRL(s1, s4, s5);
+    } else {
+        if (rex.w) {
+            NEG(s4, s5);
+        } else {
+            ADDI(s4, xZR, 32);
+            SUB(s4, s4, s5);
+        }
+        SRLxw(s3, s1, s5);
+        SLLxw(s4, s2, s4);
+        OR(s1, s4, s3);
+    }
 
     IFX (X_PEND) {
         SDxw(s1, xEmu, offsetof(x64emu_t, res));
@@ -2036,6 +2048,7 @@ void emit_shrd32(dynarec_rv64_t* dyn, int ninst, rex_t rex, int s1, int s2, int 
 void emit_shld32(dynarec_rv64_t* dyn, int ninst, rex_t rex, int s1, int s2, int s5, int s3, int s4, int s6)
 {
     int64_t j64;
+    int result_zero_extended = 0;
     CLEAR_FLAGS();
     IFX (X_PEND) {
         SDxw(s1, xEmu, offsetof(x64emu_t, op1));
@@ -2045,9 +2058,13 @@ void emit_shld32(dynarec_rv64_t* dyn, int ninst, rex_t rex, int s1, int s2, int 
         SET_DFNONE();
     }
 
-    MOV32w(s3, (rex.w ? 64 : 32));
-    SUB(s3, s3, s5);
     IFX (X_CF) {
+        if (rex.w) {
+            NEG(s3, s5);
+        } else {
+            ADDI(s3, xZR, 32);
+            SUB(s3, s3, s5);
+        }
         if (cpuext.zbs) {
             BEXT_(s4, s1, s3);
         } else {
@@ -2064,16 +2081,28 @@ void emit_shld32(dynarec_rv64_t* dyn, int ninst, rex_t rex, int s1, int s2, int 
         SLLI(s6, s6, F_OF2);
         OR(xFlags, xFlags, s6);
     }
-    SLLxw(s4, s1, s5);
-    SRLxw(s3, s2, s3);
-    OR(s1, s3, s4);
+    if (s1 == s2 && cpuext.zbb) {
+        ROLxw(s1, s1, s5);
+    } else if (!rex.w && cpuext.zba) {
+        SLLI(s4, s1, 32);
+        ADDUW(s4, s2, s4);
+        SLL(s4, s4, s5);
+        SRLI(s1, s4, 32);
+        result_zero_extended = 1;
+    } else {
+        if (!(dyn->insts[ninst].x64.gen_flags & X_CF)) NEG(s3, s5);
+        SLLxw(s4, s1, s5);
+        SRLxw(s3, s2, s3);
+        OR(s1, s3, s4);
+    }
 
     IFX (X_PEND) {
         SDxw(s1, xEmu, offsetof(x64emu_t, res));
     }
     UP32_WRITE32(s1);
     if (!rex.w) {
-        ZEROUP_RESULT(s1);
+        if (result_zero_extended) UP32_ZERO(s1);
+        else ZEROUP_RESULT(s1);
     }
     IFX (X_ZF) {
         SET_FLAGS_EQZ(s1, F_ZF, s5);
