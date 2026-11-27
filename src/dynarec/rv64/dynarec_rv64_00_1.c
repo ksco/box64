@@ -292,57 +292,70 @@ uintptr_t dynarec64_00_1(dynarec_rv64_t* dyn, uintptr_t addr, uintptr_t ip, int 
             }
             break;
         case 0x69:
-            INST_NAME("IMUL Gd, Ed, Id");
+        case 0x6B:
+            INST_NAME(opcode == 0x69 ? "IMUL Gd, Ed, Id" : "IMUL Gd, Ed, Ib");
             SETFLAGS(X_ALL, SF_SET_NODF, NAT_FLAGS_NOFUSION);
             nextop = F8;
             GETGDd;
-            GETED(4);
-            i64 = F32S;
-            MOV64x(x4, i64);
-            CLEAR_FLAGS();
-            if (rex.w) {
-                // 64bits imul
-                UFLAG_IF {
+            GETED(opcode == 0x69 ? 4 : 1);
+            i64 = opcode == 0x69 ? F32S : F8S;
+            UFLAG_IF { SET_DFNONE(); }
+            if (i64 == 0 || i64 == 1) {
+                CLEAR_FLAGS();
+                if (i64 == 0) {
+                    MV(gd, xZR);
+                    if (!rex.w) UP32_ZERO(gd);
+                } else if (NEED_ZEROUP(gd)) {
+                    ZEXTW2(gd, ed);
+                    UP32_ZERO(gd);
+                } else if (ed != gd) {
+                    MV(gd, ed);
+                }
+            } else if (dyn->insts[ninst].x64.gen_flags & (X_CF | X_OF)) {
+                MOV64x(x4, i64);
+                CLEAR_FLAGS();
+                if (rex.w) {
                     MULH(x3, ed, x4);
                     MUL(gd, ed, x4);
-                    SET_DFNONE();
-                    IFX (X_CF | X_OF) {
-                        SRAI(x5, gd, 63);
-                        XOR(x3, x3, x5);
-                        SNEZ(x3, x3);
-                        IFX (X_CF) OR(xFlags, xFlags, x3); // F_CF == 0
-                        IFX (X_OF) {
-                            SLLI(x3, x3, F_OF2);
-                            OR(xFlags, xFlags, x3);
-                        }
-                    }
+                    SRAI(x5, gd, 63);
+                    XOR(x3, x3, x5);
                 } else {
-                    MULxw(gd, ed, x4);
-                }
-            } else {
-                // 32bits imul
-                UFLAG_IF {
                     SEXT_W(x3, ed);
                     MUL(x5, x3, x4);
-                    SET_DFNONE();
-                    IFX (X_CF | X_OF) {
-                        SEXT_W(x3, x5);
-                        XOR(x3, x5, x3);
-                        SNEZ(x3, x3);
-                        IFX (X_CF) OR(xFlags, xFlags, x3); // F_CF == 0
-                        IFX (X_OF) {
-                            SLLI(x3, x3, F_OF2);
-                            OR(xFlags, xFlags, x3);
-                        }
-                    }
-                    ZEXTW2(gd, x5);
-                } else {
-                    MULxw(gd, ed, x4);
-                    if (NEED_ZEROUP(gd)) ZEROUP_RESULT(gd);
+                    SEXT_W(x3, x5);
+                    XOR(x3, x5, x3);
                 }
+                SNEZ(x3, x3);
+                IFX (X_CF) OR(xFlags, xFlags, x3);
+                IFX (X_OF) {
+                    SLLI(x3, x3, F_OF2);
+                    OR(xFlags, xFlags, x3);
+                }
+                if (!rex.w) {
+                    ZEXTW2(gd, x5);
+                    UP32_ZERO(gd);
+                }
+            } else {
+                if (i64 == -1) {
+                    SUB(gd, xZR, ed);
+                } else if (i64 > 1 && !(i64 & (i64 - 1))) {
+                    SLLI(gd, ed, __builtin_ctzll(i64));
+                } else if ((i64 == 3 || i64 == 5 || i64 == 9) && (cpuext.zba || cpuext.xtheadba)) {
+                    const int shift = __builtin_ctzll(i64 - 1);
+                    if (cpuext.zba) {
+                        SHxADD(gd, ed, shift, ed);
+                    } else {
+                        TH_ADDSL(gd, ed, ed, shift);
+                    }
+                } else {
+                    MOV64x(x4, i64);
+                    MULxw(gd, ed, x4);
+                }
+                if (NEED_ZEROUP(gd)) ZEROUP_RESULT(gd);
+                CLEAR_FLAGS();
             }
             IFX (X_SF) {
-                SRLI(x5, gd, rex.w ? 63 : 31);
+                SRLIxw(x5, gd, rex.w ? 63 : 31);
                 SLLI(x5, x5, F_SF);
                 OR(xFlags, xFlags, x5);
             }
@@ -359,64 +372,6 @@ uintptr_t dynarec64_00_1(dynarec_rv64_t* dyn, uintptr_t addr, uintptr_t ip, int 
                 PUSH1mz(x3);
             }
             break;
-        case 0x6B:
-            INST_NAME("IMUL Gd, Ed, Ib");
-            SETFLAGS(X_ALL, SF_SET_NODF, NAT_FLAGS_NOFUSION);
-            nextop = F8;
-            GETGDd;
-            GETED(1);
-            i64 = F8S;
-            MOV64x(x4, i64);
-            CLEAR_FLAGS();
-            if (rex.w) {
-                // 64bits imul
-                UFLAG_IF {
-                    MULH(x3, ed, x4);
-                    MUL(gd, ed, x4);
-                    SET_DFNONE();
-                    IFX (X_CF | X_OF) {
-                        SRAI(x5, gd, 63);
-                        XOR(x3, x3, x5);
-                        SNEZ(x3, x3);
-                        IFX (X_CF) OR(xFlags, xFlags, x3); // F_CF == 0
-                        IFX (X_OF) {
-                            SLLI(x3, x3, F_OF2);
-                            OR(xFlags, xFlags, x3);
-                        }
-                    }
-                } else {
-                    MUL(gd, ed, x4);
-                }
-            } else {
-                // 32bits imul
-                UFLAG_IF {
-                    SEXT_W(x3, ed);
-                    MUL(x5, x3, x4); // full 64bits product
-                    SET_DFNONE();
-                    IFX (X_CF | X_OF) {
-                        SEXT_W(x3, x5);
-                        XOR(x3, x5, x3);
-                        SNEZ(x3, x3);
-                        IFX (X_CF) OR(xFlags, xFlags, x3); // F_CF == 0
-                        IFX (X_OF) {
-                            SLLI(x3, x3, F_OF2);
-                            OR(xFlags, xFlags, x3);
-                        }
-                    }
-                    ZEXTW2(gd, x5);
-                } else {
-                    MULW(gd, ed, x4);
-                    if (NEED_ZEROUP(gd)) ZEROUP_RESULT(gd);
-                }
-            }
-            IFX (X_SF) {
-                SRLI(x5, gd, rex.w ? 63 : 31);
-                SLLI(x5, x5, F_SF);
-                OR(xFlags, xFlags, x5);
-            }
-            IFX (X_PF) emit_pf(dyn, ninst, gd, x3, x4);
-            break;
-
         case 0x6C:
         case 0x6D:
             INST_NAME(opcode == 0x6C ? "INSB" : "INSD");
