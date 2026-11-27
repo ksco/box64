@@ -614,19 +614,20 @@ uintptr_t dynarec64_F30F(dynarec_rv64_t* dyn, uintptr_t addr, uintptr_t ip, int 
             nextop = F8;
             GETED(0);
             GETGDsd;
-            if (!rex.w && MODREG) {
+            if (!cpuext.zbb && !rex.w && MODREG) {
                 ZEXTW2(x4, ed);
                 ed = x4;
             }
             CLEAR_FLAGS();
-            BNE_MARK(ed, xZR);
-            ORI(xFlags, xFlags, 1 << F_ZF);
-            MOV32w(gd, 0);
-            B_NEXT_nocond;
-            MARK;
             if (cpuext.zbb) {
                 CPOPxw(gd, ed);
+                IFX (X_ZF) SET_FLAGS_EQZ(gd, F_ZF, x3);
             } else {
+                BNE_MARK(ed, xZR);
+                ORI(xFlags, xFlags, 1 << F_ZF);
+                MOV32w(gd, 0);
+                B_NEXT_nocond;
+                MARK;
                 if (rex.w) {
                     MOV64xs(x7, 0x5555555555555555ULL, x6);
 
@@ -687,7 +688,10 @@ uintptr_t dynarec64_F30F(dynarec_rv64_t* dyn, uintptr_t addr, uintptr_t ip, int 
             }
             break;
         case 0xBC:
-            INST_NAME("TZCNT Gd, Ed");
+        case 0xBD: {
+            int leading = opcode == 0xBD;
+            if (leading) INST_NAME("LZCNT Gd, Ed");
+            else INST_NAME("TZCNT Gd, Ed");
             if (!BOX64DRENV(dynarec_safeflags)) {
                 SETFLAGS(X_CF | X_ZF, SF_SUBSET, NAT_FLAGS_NOFUSION);
             } else {
@@ -698,44 +702,31 @@ uintptr_t dynarec64_F30F(dynarec_rv64_t* dyn, uintptr_t addr, uintptr_t ip, int 
             GETED(0);
             GETGDsd;
             CLEAR_FLAGS();
-            if (!rex.w && MODREG) {
-                ZEXTW2(x4, ed);
-                ed = x4;
+            if (!cpuext.zbb) {
+                if (!rex.w && MODREG) {
+                    ZEXTW2(x4, ed);
+                    ed = x4;
+                }
+                BNEZ_MARK(ed);
+                MOV32w(gd, rex.w ? 64 : 32);
+                B_MARK2_nocond;
+                MARK;
             }
-            IFX (X_CF) SET_FLAGS_EQZ(ed, F_CF, x3);
-            BNEZ_MARK(ed);
-            IFX (X_ZF) ANDI(xFlags, xFlags, ~(1 << F_ZF));
-            MOV32w(gd, rex.w ? 64 : 32);
-            B_NEXT_nocond;
-            MARK;
-            CTZxw(gd, ed, rex.w, x3, x5);
-            IFX (X_ZF) SET_FLAGS_EQZ(gd, F_ZF, x3);
-            break;
-        case 0xBD:
-            INST_NAME("LZCNT Gd, Ed");
-            if (!BOX64DRENV(dynarec_safeflags)) {
-                SETFLAGS(X_CF | X_ZF, SF_SUBSET, NAT_FLAGS_NOFUSION);
+            if (leading) {
+                CLZxw(gd, ed, rex.w, x5, x2, x3);
             } else {
-                SETFLAGS(X_ALL, SF_SET_NODF, NAT_FLAGS_NOFUSION);
+                CTZxw(gd, ed, rex.w, x3, x5);
             }
-            SET_DFNONE();
-            nextop = F8;
-            GETED(0);
-            GETGDsd;
-            CLEAR_FLAGS();
-            if (!rex.w && MODREG) {
-                ZEXTW2(x4, ed);
-                ed = x4;
+            if (!cpuext.zbb) {
+                MARK2;
             }
-            IFX (X_CF) SET_FLAGS_EQZ(ed, F_CF, x3);
-            BNEZ_MARK(ed);
-            MOV32w(gd, rex.w ? 64 : 32);
-            IFX (X_ZF) ANDI(xFlags, xFlags, ~(1 << F_ZF));
-            B_NEXT_nocond;
-            MARK;
-            CLZxw(gd, ed, rex.w, x5, x2, x3);
+            IFX (X_CF) {
+                SRLI(x3, gd, rex.w ? 6 : 5);
+                OR(xFlags, xFlags, x3);
+            }
             IFX (X_ZF) SET_FLAGS_EQZ(gd, F_ZF, x3);
             break;
+        }
 
         case 0xC2:
             INST_NAME("CMPSS Gx, Ex, Ib");
