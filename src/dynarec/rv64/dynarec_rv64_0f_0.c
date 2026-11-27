@@ -844,7 +844,21 @@ uintptr_t dynarec64_0F_0(dynarec_rv64_t* dyn, uintptr_t addr, uintptr_t ip, int 
                         VSHA2CL_VV(v0, v1, vx0);
                         break;
                     }
-                    if (u8 != 0xCB && cpuext.vector && cpuext.zvbb) {
+                    if (u8 == 0xCD && cpuext.vector && cpuext.zvknha) {
+                        SET_ELEMENT_WIDTH(x1, VECTOR_SEW32);
+                        GETGX_vector(v0, 1, VECTOR_SEW32);
+                        GETEX_vector(v1, 0, 0, VECTOR_SEW32);
+                        int partial_schedule = vpu_get_scratch(dyn);
+                        int recent_words = vpu_get_scratch(dyn);
+                        VSLIDE1UP_VX(partial_schedule, v0, xZR, VECTOR_UNMASKED);
+                        VSLIDEDOWN_VI(recent_words, v0, 3, VECTOR_UNMASKED);
+                        VECTOR_LOAD_VMASK(0xC, x4);
+                        VMERGE_VVM(recent_words, recent_words, v1);
+                        VMV_V_I(v0, 0);
+                        VSHA2MS_VV(v0, partial_schedule, recent_words);
+                        break;
+                    }
+                    if (u8 != 0xCB && cpuext.vector && (cpuext.zvbb || (u8 <= 0xCA && !cpuext.xtheadvector))) {
                         SET_ELEMENT_WIDTH(x1, VECTOR_SEW32);
                         GETGX_vector(v0, 1, VECTOR_SEW32);
                         GETEX_vector(v1, 0, 0, VECTOR_SEW32);
@@ -854,7 +868,13 @@ uintptr_t dynarec64_0F_0(dynarec_rv64_t* dyn, uintptr_t addr, uintptr_t ip, int 
                         int vz = vpu_get_scratch(dyn);
                         switch (u8) {
                             case 0xC8:
-                                VROR_VI(d0, v0, 2, 1);
+                                if (cpuext.zvbb) {
+                                    VROR_VI(d0, v0, 2, VECTOR_UNMASKED);
+                                } else {
+                                    VSRL_VI(d0, v0, 2, VECTOR_UNMASKED);
+                                    VSLL_VI(d1, v0, 30, VECTOR_UNMASKED);
+                                    VOR_VV(d0, d0, d1, VECTOR_UNMASKED);
+                                }
                                 VADD_VV(d0, d0, v1, 1);
                                 if (v0 != v1) VOR_VV(v0, v1, v1, 1);
                                 VSLIDEDOWN_VI(d1, d0, 3, 1);
@@ -865,16 +885,35 @@ uintptr_t dynarec64_0F_0(dynarec_rv64_t* dyn, uintptr_t addr, uintptr_t ip, int 
                                 VSLIDEUP_VI(d0, v0, 2, 1);
                                 VXOR_VV(v0, v0, d0, 1);
                                 break;
-                            case 0xCA:
-                                VXOR_VV(vz, vz, vz, 1);
-                                VSLIDE1UP_VX(d0, v1, xZR, 1);
-                                VXOR_VV(d0, d0, v0, 1);
-                                VROR_VI(v0, d0, 31, 1);
-                                VSLIDEDOWN_VI(d1, v0, 3, 1);
-                                VSLIDEUP_VI(d1, vz, 1, 1);
-                                VROR_VI(d1, d1, 31, 1);
-                                VXOR_VV(v0, v0, d1, 1);
+                            case 0xCA: {
+                                int exact_width = cpuext.vlen <= 32;
+                                if (cpuext.vlen == 32)
+                                    rvv_set_vl_for_width(dyn, ninst, x1, VECTOR_SEW32, VECTOR_LMULF2, 16);
+                                VSLIDE1UP_VX(d0, v1, xZR, VECTOR_UNMASKED);
+                                VXOR_VV(d0, d0, v0, VECTOR_UNMASKED);
+                                if (cpuext.zvbb) {
+                                    VROR_VI(v0, d0, 31, VECTOR_UNMASKED);
+                                } else {
+                                    VSLL_VI(v0, d0, 1, VECTOR_UNMASKED);
+                                    VSRL_VI(d1, d0, 31, VECTOR_UNMASKED);
+                                    VOR_VV(v0, v0, d1, VECTOR_UNMASKED);
+                                }
+                                VSLIDEDOWN_VI(d1, v0, 3, VECTOR_UNMASKED);
+                                if (cpuext.zvbb) {
+                                    VROR_VI(d1, d1, 31, VECTOR_UNMASKED);
+                                } else {
+                                    VSLL_VI(d0, d1, 1, VECTOR_UNMASKED);
+                                    VSRL_VI(d1, d1, 31, VECTOR_UNMASKED);
+                                    VOR_VV(d1, d1, d0, VECTOR_UNMASKED);
+                                }
+                                if (exact_width) {
+                                    VXOR_VV(v0, v0, d1, VECTOR_UNMASKED);
+                                } else {
+                                    VECTOR_LOAD_VMASK(1, x4);
+                                    VXOR_VV(v0, v0, d1, VECTOR_MASKED);
+                                }
                                 break;
+                            }
                             case 0xCC:
                                 VSLIDEDOWN_VI(d0, v0, 1, 1);
                                 VSLIDEUP_VI(d0, v1, 3, 1);
@@ -1026,16 +1065,16 @@ uintptr_t dynarec64_0F_0(dynarec_rv64_t* dyn, uintptr_t addr, uintptr_t ip, int 
                         u8 = F8;
                         q0 = simd_get_reg(dyn, ninst, x1, gd, 0, VECTOR_SEW32);
                         q1 = simd_get_reg(dyn, ninst, x1, ed, 0, VECTOR_SEW32);
-                        VMV_V_V(qM, q1);
                     } else {
                         SMREAD();
                         addr = geted(dyn, addr, ninst, nextop, &ed, x2, x3, &fixedaddress, rex, NULL, 0, 1);
                         u8 = F8;
                         q0 = simd_get_reg(dyn, ninst, x1, gd, 0, VECTOR_SEW32);
                         VLE32_V(qM, ed, VECTOR_UNMASKED, VECTOR_NFIELD1);
+                        q1 = qM;
                     }
                     MOV32w(x7, sha1_k[u8 & 3]);
-                    VADD_VX(qM, qM, x7, VECTOR_UNMASKED);
+                    VADD_VX(qM, q1, x7, VECTOR_UNMASKED);
                     VSLIDEDOWN_VI(qA, q0, 3, VECTOR_UNMASKED);
                     VSLIDEDOWN_VI(qB, q0, 2, VECTOR_UNMASKED);
                     VSLIDEDOWN_VI(qC, q0, 1, VECTOR_UNMASKED);
@@ -1082,27 +1121,22 @@ uintptr_t dynarec64_0F_0(dynarec_rv64_t* dyn, uintptr_t addr, uintptr_t ip, int 
                     VADD_VV(qU, qU, qC, VECTOR_UNMASKED);
                     VADD_VV(qB, qB, qM, VECTOR_UNMASKED);
 
-                    VROR_VI(qA, qA, 2, VECTOR_UNMASKED);
+                    v0 = simd_get_reg_empty(dyn, ninst, x1, gd);
+                    rvv_set_vl_for_width(dyn, ninst, x1, VECTOR_SEW32, VECTOR_LMUL1, 16);
+                    VROR_VI(v0, qA, 2, VECTOR_UNMASKED);
                     VROR_VI(qM, qD, 2, VECTOR_UNMASKED);
-                    SHA1_F(qC, qD, qA, qT, q0);
-                    VROR_VI(q0, qD, 27, VECTOR_UNMASKED);
+                    SHA1_F(qC, qD, v0, qT, qA);
+                    VROR_VI(qA, qD, 27, VECTOR_UNMASKED);
                     VADD_VV(qC, qC, qB, VECTOR_UNMASKED);
-                    VADD_VV(q0, q0, qU, VECTOR_UNMASKED);
-                    VROR_VI(qD, q0, 27, VECTOR_UNMASKED);
+                    VADD_VV(qU, qA, qU, VECTOR_UNMASKED);
+                    VROR_VI(qD, qU, 27, VECTOR_UNMASKED);
                     VADD_VV(qD, qD, qC, VECTOR_UNMASKED);
 
 #undef SHA1_F
 
-                    v0 = simd_get_reg_empty(dyn, ninst, x1, gd);
-                    rvv_set_vl_for_width(dyn, ninst, x1, VECTOR_SEW32, VECTOR_LMUL1, 16);
-                    VMV_X_S(x7, qA);
-                    VMV_X_S(x6, qM);
-                    VMV_X_S(x5, q0);
-                    VMV_X_S(x4, qD);
-                    VMV_S_X(qT, x4);
-                    VSLIDE1UP_VX(v0, qT, x5, VECTOR_UNMASKED);
-                    VSLIDE1UP_VX(qT, v0, x6, VECTOR_UNMASKED);
-                    VSLIDE1UP_VX(v0, qT, x7, VECTOR_UNMASKED);
+                    VSLIDEUP_VI(v0, qM, 1, VECTOR_UNMASKED);
+                    VSLIDEUP_VI(v0, qU, 2, VECTOR_UNMASKED);
+                    VSLIDEUP_VI(v0, qD, 3, VECTOR_UNMASKED);
                     break;
                 }
                 default: DEFAULT;
