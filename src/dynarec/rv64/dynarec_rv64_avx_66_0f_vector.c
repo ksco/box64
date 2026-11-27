@@ -845,33 +845,22 @@ uintptr_t dynarec64_AVX_66_0F_vector(dynarec_rv64_t* dyn, uintptr_t addr, uintpt
                     DEFAULT_VECTOR;
             }
             break;
-        case 0x64:
-            INST_NAME("VPCMPGTB Gx, Vx, Ex");
+        case 0x64 ... 0x66: {
+            int sew = opcode - 0x64;
+            if (sew == VECTOR_SEW8) INST_NAME("VPCMPGTB Gx, Vx, Ex");
+            else if (sew == VECTOR_SEW16) INST_NAME("VPCMPGTW Gx, Vx, Ex");
+            else INST_NAME("VPCMPGTD Gx, Vx, Ex");
             nextop = F8;
-            GETGY_empty_VYEY_vector(v0, q0, q1, VECTOR_SEW8);
-            VMSLT_VV(VMASK, q1, q0, VECTOR_UNMASKED);
-            VXOR_VV(v0, v0, v0, VECTOR_UNMASKED);
-            VMERGE_VIM(v0, v0, 0x1f);
-            PUTGY_vector(v0, VECTOR_SEW8);
+            GETGY_empty_VYEY_vector(v0, q0, q1, sew);
+            if (q0 == q1) {
+                VMV_V_I(v0, 0);
+            } else {
+                VSSUB_VV(v0, q1, q0, VECTOR_UNMASKED);
+                VSRA_VI(v0, v0, (8 << sew) - 1, VECTOR_UNMASKED);
+            }
+            PUTGY_vector(v0, sew);
             break;
-        case 0x65:
-            INST_NAME("VPCMPGTW Gx, Vx, Ex");
-            nextop = F8;
-            GETGY_empty_VYEY_vector(v0, q0, q1, VECTOR_SEW16);
-            VMSLT_VV(VMASK, q1, q0, VECTOR_UNMASKED);
-            VXOR_VV(v0, v0, v0, VECTOR_UNMASKED);
-            VMERGE_VIM(v0, v0, 0x1f);
-            PUTGY_vector(v0, VECTOR_SEW16);
-            break;
-        case 0x66:
-            INST_NAME("VPCMPGTD Gx, Vx, Ex");
-            nextop = F8;
-            GETGY_empty_VYEY_vector(v0, q0, q1, VECTOR_SEW32);
-            VMSLT_VV(VMASK, q1, q0, VECTOR_UNMASKED);
-            VXOR_VV(v0, v0, v0, VECTOR_UNMASKED);
-            VMERGE_VIM(v0, v0, 0x1f);
-            PUTGY_vector(v0, VECTOR_SEW32);
-            break;
+        }
         case 0x6F:
             INST_NAME("VMOVDQA Gx, Ex");
             nextop = F8;

@@ -689,9 +689,13 @@ uintptr_t dynarec64_AVX_66_0F38_vector(dynarec_rv64_t* dyn, uintptr_t addr, uint
             INST_NAME("VPCMPGTQ Gx, Vx, Ex");
             nextop = F8;
             GETGY_empty_VYEY_vector(v0, q0, q1, VECTOR_SEW64);
-            VMSLT_VV(VMASK, q1, q0, VECTOR_UNMASKED);
-            VXOR_VV(v0, v0, v0, VECTOR_UNMASKED);
-            VMERGE_VIM(v0, v0, 0x1f);
+            if (q0 == q1) {
+                VMV_V_I(v0, 0);
+            } else {
+                ADDI(x4, xZR, 63);
+                VSSUB_VV(v0, q1, q0, VECTOR_UNMASKED);
+                VSRA_VX(v0, v0, x4, VECTOR_UNMASKED);
+            }
             PUTGY_vector(v0, VECTOR_SEW64);
             break;
         case 0x38:
