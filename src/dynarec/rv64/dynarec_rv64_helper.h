@@ -973,8 +973,8 @@
     j64 = GET##M - dyn->native_size; \
     B##OP(reg1, reg2, j64)
 
-#define Bxx_geni(OP, M, reg1, reg2, i)     \
-    j64 = GET##M##i(i) - dyn->native_size; \
+#define Bxx_geni(OP, M, reg1, reg2, index)     \
+    j64 = GET##M##i(index) - dyn->native_size; \
     B##OP(reg1, reg2, j64)
 
 // Branch to MARK if reg1==reg2 (use j64)

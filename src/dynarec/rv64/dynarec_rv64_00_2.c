@@ -1047,35 +1047,58 @@ uintptr_t dynarec64_00_2(dynarec_rv64_t* dyn, uintptr_t addr, uintptr_t ip, int 
                 }
                 ANDI(x1, xFlags, 1 << F_DF);
                 BNEZ_MARK2(x1);
+                const int wide_address = !rex.is32bits && !rex.is67;
                 ADDI(x5, xZR, 8);
                 BLTU_MARK(xRCX, x5);
                 ANDI(x2, xRDI, 7);
-                BNEZ_MARK(x2);
-                // Aligned path
+                if (wide_address) {
+                    BEQ_MARKi(x2, xZR, 5);
+                    ADDI(x6, xZR, 64);
+                    BLTU_MARK(xRCX, x6);
+                    MARKi(4);
+                    SB(xRAX, xRDI, 0);
+                    ADDI(xRDI, xRDI, 1);
+                    SUBI(xRCX, xRCX, 1);
+                    ANDI(x2, xRDI, 7);
+                    BNE_MARKi(x2, xZR, 4);
+                    MARKi(5);
+                } else {
+                    BNEZ_MARK(x2);
+                }
+                TABLE64_(x2, 0x0101010101010101ULL);
                 ANDI(x1, xRAX, 0xff);
-                SLLI(x2, x1, 8);
-                OR(x1, x1, x2);
-                SLLI(x2, x1, 16);
-                OR(x1, x1, x2);
-                SLLI(x2, x1, 32);
-                OR(x1, x1, x2);
+                MUL(x1, x1, x2);
+                if (wide_address) {
+                    ADDI(x6, xZR, 32);
+                    Bxx_gen(LTU, MARK3, xRCX, x6);
+                    MARK4;
+                    for (int store = 0; store < 4; ++store) {
+                        SD(x1, xRDI, 0);
+                        ADDI(xRDI, xRDI, 8);
+                        SUBI(xRCX, xRCX, 8);
+                    }
+                    Bxx_gen(GEU, MARK4, xRCX, x6);
+                    BEQZ_MARKLOCK(xRCX);
+                    BLTU_MARK(xRCX, x5);
+                }
                 MARK3;
                 SD(x1, xRDI, 0);
                 ADDI(xRDI, xRDI, 8);
                 SUBI(xRCX, xRCX, 8);
                 BGEU_MARK3(xRCX, x5);
-                BEQ_NEXT(xRCX, 0);
+                BEQZ_MARKLOCK(xRCX);
                 MARK; // Part with DF==0
                 SB(xRAX, xRDI, 0);
                 ADDI(xRDI, xRDI, 1);
                 ADDI(xRCX, xRCX, -1);
                 BNEZ_MARK(xRCX);
-                B_NEXT_nocond;
+                B_MARKLOCK_nocond;
                 MARK2; // Part with DF==1
                 SB(xRAX, xRDI, 0);
                 ADDI(xRDI, xRDI, -1);
                 ADDI(xRCX, xRCX, -1);
                 BNEZ_MARK2(xRCX);
+                MARKLOCK;
                 // done
             } else {
                 INST_NAME("STOSB");
@@ -1098,19 +1121,97 @@ uintptr_t dynarec64_00_2(dynarec_rv64_t* dyn, uintptr_t addr, uintptr_t ip, int 
                 if (rex.is67 && !rex.is32bits) {
                     ZEROUP(xRDI);
                 }
+                const int vector_fill = cpuext.vector && cpuext.vlen >= 16 && !rex.is32bits && !rex.is67;
+                const int sew = rex.w ? VECTOR_SEW64 : VECTOR_SEW32;
+                const int element_bytes = 1 << sew;
+                const int chunk_bytes = cpuext.vlen >= 32 ? 64 : 32;
+                const int chunk_elements = chunk_bytes >> sew;
+                const int page_shift = 12;
                 ANDI(x1, xFlags, 1 << F_DF);
                 BNEZ_MARK2(x1);
+                if (vector_fill) {
+                    ADDI(x2, xZR, chunk_elements);
+                    Bxx_gen(GEU, MARK4, xRCX, x2);
+                }
                 MARK; // Part with DF==0
                 SDxw(xRAX, xRDI, 0);
-                ADDI(xRDI, xRDI, rex.w ? 8 : 4);
+                ADDI(xRDI, xRDI, element_bytes);
                 SUBI(xRCX, xRCX, 1);
                 BNEZ_MARK(xRCX);
-                B_NEXT_nocond;
+                if (vector_fill) {
+                    B_MARKLOCK_nocond;
+                } else {
+                    B_NEXT_nocond;
+                }
                 MARK2; // Part with DF==1
+                if (vector_fill) {
+                    ADDI(x2, xZR, 4);
+                    Bxx_gen(LTU, MARKFNAN, xRCX, x2);
+                    MARKLOCK2;
+                    for (int store = 0; store < 4; ++store) {
+                        SDxw(xRAX, xRDI, 0);
+                        SUBI(xRDI, xRDI, element_bytes);
+                        SUBI(xRCX, xRCX, 1);
+                    }
+                    Bxx_gen(GEU, MARKLOCK2, xRCX, x2);
+                    BEQZ_MARKLOCK(xRCX);
+                    MARKFNAN;
+                }
                 SDxw(xRAX, xRDI, 0);
-                SUBI(xRDI, xRDI, rex.w ? 8 : 4);
+                SUBI(xRDI, xRDI, element_bytes);
                 SUBI(xRCX, xRCX, 1);
-                BNEZ_MARK2(xRCX);
+                if (vector_fill) {
+                    Bxx_gen(NE, MARKFNAN, xRCX, xZR);
+                } else {
+                    BNEZ_MARK2(xRCX);
+                }
+                if (vector_fill) {
+                    B_MARKLOCK_nocond;
+                    MARK4;
+                    ANDI(x3, xRDI, chunk_bytes - 1);
+                    BEQ_MARKi(x3, xZR, 5);
+                    ANDI(x3, x3, element_bytes - 1);
+                    BNEZ_MARK(x3);
+                    ADDI(x3, xZR, 2 * chunk_elements);
+                    BLTU_MARK(xRCX, x3);
+                    MARKi(4);
+                    SDxw(xRAX, xRDI, 0);
+                    ADDI(xRDI, xRDI, element_bytes);
+                    SUBI(xRCX, xRCX, 1);
+                    ANDI(x3, xRDI, chunk_bytes - 1);
+                    BNE_MARKi(x3, xZR, 4);
+                    MARKi(5);
+                    const int grouping = cpuext.vlen < chunk_bytes ? VECTOR_LMUL2 : VECTOR_LMUL1;
+                    const int pattern = vpu_get_scratch_lmul(dyn, grouping);
+                    MARK3;
+                    SDxw(xRAX, xRDI, 0);
+                    SRLI(x5, xRDI, page_shift);
+                    ADDI(x5, x5, 1);
+                    SLLI(x5, x5, page_shift);
+                    ADDI(xRDI, xRDI, element_bytes);
+                    SUBI(xRCX, xRCX, 1);
+                    dyn->rvv.bits = 0;
+                    rvv_set_config(dyn, ninst, x3, sew, grouping, chunk_elements - 1);
+                    VMV_V_X(pattern, xRAX);
+                    VSE_V(pattern, xRDI, sew, VECTOR_UNMASKED, VECTOR_NFIELD1);
+                    ADDI(xRDI, xRDI, chunk_bytes - element_bytes);
+                    SUBI(xRCX, xRCX, chunk_elements - 1);
+                    BEQZ_MARKLOCK(xRCX);
+                    Bxx_gen(LTU, MARK, xRCX, x2);
+                    BEQ_MARK3(xRDI, x5);
+                    rvv_set_config(dyn, ninst, x3, sew, grouping, chunk_elements);
+                    VMV_V_X(pattern, xRAX);
+                    MARKSEG;
+                    VSE_V(pattern, xRDI, sew, VECTOR_UNMASKED, VECTOR_NFIELD1);
+                    ADDI(xRDI, xRDI, chunk_bytes);
+                    SUBI(xRCX, xRCX, chunk_elements);
+                    BEQZ_MARKLOCK(xRCX);
+                    Bxx_gen(LTU, MARK, xRCX, x2);
+                    Bxx_gen(NE, MARKSEG, xRDI, x5);
+                    B_MARK3_nocond;
+                    dyn->rvv.bits = 0;
+                }
+                MARKLOCK;
                 // done
             } else {
                 INST_NAME("STOSD");
