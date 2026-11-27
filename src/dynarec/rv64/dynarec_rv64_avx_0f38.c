@@ -81,94 +81,92 @@ uintptr_t dynarec64_AVX_0F38(dynarec_rv64_t* dyn, uintptr_t addr, uintptr_t ip, 
                 IFX (X_PF) emit_pf(dyn, ninst, gd, x2, x5);
             }
             break;
-        case 0xF3:
+        case 0xF3: {
             nextop = F8;
-            switch ((nextop >> 3) & 7) {
+            const int operation = (nextop >> 3) & 7;
+            switch (operation) {
                 case 1:
                     INST_NAME("BLSR Vd, Ed");
-                    SETFLAGS(X_ALL, SF_SET, NAT_FLAGS_NOFUSION);
-                    GETED(0);
-                    GETVDsd;
-                    if (!rex.w) {
-                        ZEXTW2(x4, ed);
-                        ed = x4;
-                    }
-                    CLEAR_FLAGS();
-                    IFX (X_CF) {
-                        SET_FLAGS_EQZ(ed, F_CF, x5);
-                    }
-                    ADDIxw(x3, ed, -1);
-                    AND(vd, ed, x3);
-                    if (!rex.w) ZEROUP(vd);
-                    IFX (X_ZF) {
-                        SET_FLAGS_EQZ(vd, F_ZF, x5);
-                    }
-                    IFX (X_SF) {
-                        SRLI(x5, vd, rex.w ? 63 : 31);
-                        SLLI(x5, x5, F_SF);
-                        OR(xFlags, xFlags, x5);
-                    }
-                    if (BOX64DRENV(dynarec_safeflags)) {
-                        IFX (X_PF) emit_pf(dyn, ninst, vd, x3, x5);
-                    }
                     break;
                 case 2:
                     INST_NAME("BLSMSK Vd, Ed");
-                    SETFLAGS(X_ALL, SF_SET, NAT_FLAGS_NOFUSION);
-                    GETED(0);
-                    GETVDsd;
-                    if (!rex.w) {
-                        ZEXTW2(x4, ed);
-                        ed = x4;
-                    }
-                    CLEAR_FLAGS();
-                    IFX (X_CF) {
-                        SET_FLAGS_EQZ(ed, F_CF, x5);
-                    }
-                    ADDIxw(x3, ed, -1);
-                    XOR(vd, ed, x3);
-                    if (!rex.w) ZEROUP(vd);
-                    IFX (X_SF) {
-                        SRLI(x5, vd, rex.w ? 63 : 31);
-                        SLLI(x5, x5, F_SF);
-                        OR(xFlags, xFlags, x5);
-                    }
-                    if (BOX64DRENV(dynarec_safeflags)) {
-                        IFX (X_PF) emit_pf(dyn, ninst, vd, x3, x5);
-                    }
                     break;
                 case 3:
                     INST_NAME("BLSI Vd, Ed");
-                    SETFLAGS(X_ALL, SF_SET, NAT_FLAGS_NOFUSION);
-                    GETED(0);
-                    GETVDsd;
-                    if (!rex.w) {
-                        ZEXTW2(x4, ed);
-                        ed = x4;
-                    }
-                    CLEAR_FLAGS();
-                    IFX (X_CF) {
-                        SET_FLAGS_NEZ(ed, F_CF, x5);
-                    }
-                    SUBxw(x3, xZR, ed);
-                    AND(vd, ed, x3);
-                    if (!rex.w) ZEROUP(vd);
-                    IFX (X_ZF) {
-                        SET_FLAGS_EQZ(vd, F_ZF, x5);
-                    }
-                    IFX (X_SF) {
-                        SRLI(x5, vd, rex.w ? 63 : 31);
-                        SLLI(x5, x5, F_SF);
-                        OR(xFlags, xFlags, x5);
-                    }
-                    if (BOX64DRENV(dynarec_safeflags)) {
-                        IFX (X_PF) emit_pf(dyn, ninst, vd, x3, x5);
-                    }
                     break;
                 default:
                     DEFAULT;
             }
+            SETFLAGS(X_ALL, SF_SET, NAT_FLAGS_NOFUSION);
+            if (MODREG) {
+                GETED(0);
+            } else {
+                SMREAD();
+                addr = geted(dyn, addr, ninst, nextop, &wback, x2, x1, &fixedaddress, rex, NULL, 1, 0);
+                ed = x1;
+                if (rex.w) {
+                    LD(ed, wback, fixedaddress);
+                } else {
+                    LWU(ed, wback, fixedaddress);
+                }
+            }
+            vd = TO_NAT(vex.v);
+            MARKREGd(vd);
+            const int source_zero_extended = !rex.w && (!MODREG || isUpper32Zero(dyn, ninst, ed));
+            CLEAR_FLAGS();
+            IFX (X_CF) {
+                int test_source = ed;
+                if (!rex.w && !source_zero_extended) {
+                    ADDIW(x5, ed, 0);
+                    test_source = x5;
+                }
+                if (operation == 3) {
+                    SNEZ(x5, test_source);
+                } else {
+                    SEQZ(x5, test_source);
+                }
+                OR(xFlags, xFlags, x5);
+            }
+            if (operation == 3) {
+                SUBxw(x3, xZR, ed);
+                AND(vd, ed, x3);
+            } else {
+                ADDIxw(x3, ed, -1);
+                if (operation == 2) {
+                    XOR(vd, ed, x3);
+                } else {
+                    AND(vd, ed, x3);
+                }
+            }
+            int result_has_upper_bits = !rex.w && (operation == 2 || !source_zero_extended);
+            if (!rex.w) {
+                if (!result_has_upper_bits) {
+                    UP32_ZERO(vd);
+                } else if (NEED_ZEROUP32(vd)) {
+                    ZEROUP_RESULT(vd);
+                    result_has_upper_bits = 0;
+                }
+            }
+            IFX (X_ZF) {
+                if (operation != 2) {
+                    int test_result = vd;
+                    if (result_has_upper_bits) {
+                        ADDIW(x3, vd, 0);
+                        test_result = x3;
+                    }
+                    SET_FLAGS_EQZ(test_result, F_ZF, x5);
+                }
+            }
+            IFX (X_SF) {
+                SRLIxw(x5, vd, rex.w ? 63 : 31);
+                SLLI(x5, x5, F_SF);
+                OR(xFlags, xFlags, x5);
+            }
+            if (BOX64DRENV(dynarec_safeflags)) {
+                IFX (X_PF) emit_pf(dyn, ninst, vd, x3, x5);
+            }
             break;
+        }
 
         case 0xF5:
             INST_NAME("BZHI Gd, Ed, Vd");
