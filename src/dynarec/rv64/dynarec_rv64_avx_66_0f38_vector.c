@@ -133,21 +133,33 @@ uintptr_t dynarec64_AVX_66_0F38_vector(dynarec_rv64_t* dyn, uintptr_t addr, uint
             PUTGY_vector(v0, sew);
             break;
         }
-        case 0x04:
+        case 0x04: {
             INST_NAME("VPMADDUBSW Gx, Vx, Ex");
             nextop = F8;
-            GETGY_empty_VYEY_vector(v0, q0, q1, VECTOR_SEW8);
-            q2 = vpu_get_scratch_lmul(dyn, VECTOR_LMUL2);
-            q3 = vpu_get_scratch(dyn);
-            q4 = vpu_get_scratch(dyn);
-            simd_set_width(dyn, ninst, x1, VECTOR_SEW8, 16 << vex.l);
-            VWMULSU_VV(q2, q1, q0, VECTOR_UNMASKED);
-            rvv_set_vl_for_width(dyn, ninst, x1, VECTOR_SEW16, VECTOR_LMUL1, 16 << vex.l);
-            VNSRL_WI(q3, q2, 0, VECTOR_UNMASKED);
-            VNSRL_WI(q4, q2, 16, VECTOR_UNMASKED);
-            VSADD_VV(v0, q3, q4, VECTOR_UNMASKED);
+            unsigned width = 16 << vex.l;
+            unsigned grouping = cpuext.vlen >= 2 * width ? VECTOR_LMULF2 : VECTOR_LMUL1;
+            unsigned regions = vex.l ? SIMD_YMM : SIMD_XMM;
+            q0 = simd_access(dyn, ninst, x1, vex.v, regions, 0);
+            if (MODREG) {
+                q1 = simd_access(dyn, ninst, x1, (nextop & 7) + (rex.b << 3), regions, 0);
+            } else {
+                SMREAD();
+                addr = geted(dyn, addr, ninst, nextop, &ed, x3, x2, &fixedaddress, rex, NULL, 0, 0);
+                q1 = vpu_get_scratch(dyn);
+            }
+            rvv_set_vl_for_width(dyn, ninst, x1, VECTOR_SEW8, grouping, width);
+            if (!MODREG) VLE8_V(q1, ed, VECTOR_UNMASKED, VECTOR_NFIELD1);
+            GETGY_empty_vector(v0);
+            int products = vpu_get_scratch_lmul(dyn, grouping == VECTOR_LMUL1 ? VECTOR_LMUL2 : VECTOR_LMUL1);
+            int odd_products = vpu_get_scratch(dyn);
+            VWMULSU_VV(products, q1, q0, VECTOR_UNMASKED);
+            rvv_set_vl_for_width(dyn, ninst, x1, VECTOR_SEW16, grouping, width);
+            VNSRL_WI(odd_products, products, 16, VECTOR_UNMASKED);
+            VNSRL_WI(v0, products, 0, VECTOR_UNMASKED);
+            VSADD_VV(v0, v0, odd_products, VECTOR_UNMASKED);
             PUTGY_vector(v0, VECTOR_SEW16);
             break;
+        }
         case 0x08 ... 0x0A: {
             int sew = opcode - 0x08;
             if (sew == VECTOR_SEW8) INST_NAME("VPSIGNB Gx, Vx, Ex");

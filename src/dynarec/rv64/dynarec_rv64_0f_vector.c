@@ -415,22 +415,23 @@ uintptr_t dynarec64_0F_vector(dynarec_rv64_t* dyn, uintptr_t addr, uintptr_t ip,
                     VNSRL_WI(d1, v0, 16, VECTOR_UNMASKED);
                     VSADD_VV(q0, d1, d0, VECTOR_UNMASKED);
                     break;
-                case 0x04:
+                case 0x04: {
                     INST_NAME("PMADDUBSW Gm, Em");
                     nextop = F8;
                     GETGM_vector(q0);
                     SET_ELEMENT_WIDTH(x1, VECTOR_SEW64);
                     GETEM_vector(q1, 0);
-                    SET_ELEMENT_WIDTH(x1, VECTOR_SEW8);
-                    v0 = vpu_get_scratch_lmul(dyn, VECTOR_LMUL2);
-                    d0 = vpu_get_scratch_lmul(dyn, VECTOR_LMUL2);
-                    d1 = vpu_get_scratch_lmul(dyn, VECTOR_LMUL2); // no more scratches!
-                    VWMULSU_VV(v0, q1, q0, VECTOR_UNMASKED);
-                    SET_ELEMENT_WIDTH(x1, VECTOR_SEW16);
-                    VNSRL_WI(d0, v0, 0, VECTOR_UNMASKED);
-                    VNSRL_WI(d1, v0, 16, VECTOR_UNMASKED);
-                    VSADD_VV(q0, d1, d0, VECTOR_UNMASKED);
+                    unsigned grouping = cpuext.xtheadvector ? VECTOR_LMUL1 : VECTOR_LMULF2;
+                    int products = vpu_get_scratch_lmul(dyn, grouping == VECTOR_LMUL1 ? VECTOR_LMUL2 : VECTOR_LMUL1);
+                    int odd_products = vpu_get_scratch(dyn);
+                    rvv_set_vl_for_width(dyn, ninst, x1, VECTOR_SEW8, grouping, 8);
+                    VWMULSU_VV(products, q1, q0, VECTOR_UNMASKED);
+                    rvv_set_vl_for_width(dyn, ninst, x1, VECTOR_SEW16, grouping, 8);
+                    VNSRL_WI(odd_products, products, 16, VECTOR_UNMASKED);
+                    VNSRL_WI(q0, products, 0, VECTOR_UNMASKED);
+                    VSADD_VV(q0, q0, odd_products, VECTOR_UNMASKED);
                     break;
+                }
                 case 0x05:
                     INST_NAME("PHSUBW Gm, Em");
                     nextop = F8;

@@ -427,21 +427,30 @@ uintptr_t dynarec64_660F_vector(dynarec_rv64_t* dyn, uintptr_t addr, uintptr_t i
                     }
                     break;
                 }
-                case 0x04:
+                case 0x04: {
                     INST_NAME("PMADDUBSW Gx, Ex");
                     nextop = F8;
-                    SET_ELEMENT_WIDTH(x1, VECTOR_SEW8);
-                    GETGX_vector(q0, 1, VECTOR_SEW8);
-                    GETEX_vector(q1, 0, 0, VECTOR_SEW8);
-                    v0 = vpu_get_scratch_lmul(dyn, VECTOR_LMUL2);
-                    d0 = vpu_get_scratch_lmul(dyn, VECTOR_LMUL2);
-                    d1 = vpu_get_scratch_lmul(dyn, VECTOR_LMUL2); // no more scratches!
-                    VWMULSU_VV(v0, q1, q0, VECTOR_UNMASKED);
-                    SET_ELEMENT_WIDTH(x1, VECTOR_SEW16);
-                    VNSRL_WI(d0, v0, 0, VECTOR_UNMASKED);
-                    VNSRL_WI(d1, v0, 16, VECTOR_UNMASKED);
-                    VSADD_VV(q0, d1, d0, VECTOR_UNMASKED);
+                    unsigned grouping = !cpuext.xtheadvector && cpuext.vlen >= 32 ? VECTOR_LMULF2 : VECTOR_LMUL1;
+                    GETG;
+                    q0 = simd_access(dyn, ninst, x1, gd, SIMD_XMM, 1);
+                    if (MODREG) {
+                        q1 = simd_access(dyn, ninst, x1, (nextop & 7) + (rex.b << 3), SIMD_XMM, 0);
+                    } else {
+                        SMREAD();
+                        addr = geted(dyn, addr, ninst, nextop, &ed, x3, x2, &fixedaddress, rex, NULL, 0, 0);
+                        q1 = vpu_get_scratch(dyn);
+                    }
+                    rvv_set_vl_for_width(dyn, ninst, x1, VECTOR_SEW8, grouping, 16);
+                    if (!MODREG) VLE8_V(q1, ed, VECTOR_UNMASKED, VECTOR_NFIELD1);
+                    int products = vpu_get_scratch_lmul(dyn, grouping == VECTOR_LMUL1 ? VECTOR_LMUL2 : VECTOR_LMUL1);
+                    int odd_products = vpu_get_scratch(dyn);
+                    VWMULSU_VV(products, q1, q0, VECTOR_UNMASKED);
+                    rvv_set_vl_for_width(dyn, ninst, x1, VECTOR_SEW16, grouping, 16);
+                    VNSRL_WI(odd_products, products, 16, VECTOR_UNMASKED);
+                    VNSRL_WI(q0, products, 0, VECTOR_UNMASKED);
+                    VSADD_VV(q0, q0, odd_products, VECTOR_UNMASKED);
                     break;
+                }
                 case 0x08 ... 0x0A:
                     if (nextop == 0x08) {
                         INST_NAME("PSIGNB Gx, Ex");
@@ -3193,22 +3202,31 @@ uintptr_t dynarec64_660F_vector(dynarec_rv64_t* dyn, uintptr_t addr, uintptr_t i
                 VMV_V_V(v0, d0);
             }
             break;
-        case 0xF5:
+        case 0xF5: {
             INST_NAME("PMADDWD Gx, Ex");
             nextop = F8;
-            SET_ELEMENT_WIDTH(x1, VECTOR_SEW16);
-            GETGX_vector(v0, 1, VECTOR_SEW16);
-            GETEX_vector(v1, 0, 0, VECTOR_SEW16);
-            q1 = vpu_get_scratch(dyn);
-            q0 = vpu_get_scratch_lmul(dyn, VECTOR_LMUL2);
+            unsigned grouping = !cpuext.xtheadvector && cpuext.vlen >= 32 ? VECTOR_LMULF2 : VECTOR_LMUL1;
+            gd = ((nextop & 0x38) >> 3) + (rex.r << 3);
+            v0 = simd_access(dyn, ninst, x1, gd, SIMD_XMM, 1);
+            if (MODREG) {
+                v1 = simd_access(dyn, ninst, x1, (nextop & 7) + (rex.b << 3), SIMD_XMM, 0);
+            } else {
+                SMREAD();
+                addr = geted(dyn, addr, ninst, nextop, &ed, x3, x2, &fixedaddress, rex, NULL, 0, 0);
+                v1 = vpu_get_scratch(dyn);
+            }
+            rvv_set_vl_for_width(dyn, ninst, x1, VECTOR_SEW16, grouping, 16);
+            if (!MODREG) VLE16_V(v1, ed, VECTOR_UNMASKED, VECTOR_NFIELD1);
+            int products = vpu_get_scratch_lmul(dyn, grouping == VECTOR_LMUL1 ? VECTOR_LMUL2 : VECTOR_LMUL1);
+            int odd_products = vpu_get_scratch(dyn);
             ADDI(x3, xZR, 32);
-            SET_ELEMENT_WIDTH(x1, VECTOR_SEW16);
-            VWMUL_VV(q0, v1, v0, VECTOR_UNMASKED);
-            SET_ELEMENT_WIDTH(x1, VECTOR_SEW32);
-            VNSRL_WX(q1, q0, x3, VECTOR_UNMASKED);
-            VNSRL_WI(v0, q0, 0, VECTOR_UNMASKED);
-            VADD_VV(v0, v0, q1, VECTOR_UNMASKED);
+            VWMUL_VV(products, v1, v0, VECTOR_UNMASKED);
+            rvv_set_vl_for_width(dyn, ninst, x1, VECTOR_SEW32, grouping, 16);
+            VNSRL_WX(odd_products, products, x3, VECTOR_UNMASKED);
+            VNSRL_WI(v0, products, 0, VECTOR_UNMASKED);
+            VADD_VV(v0, v0, odd_products, VECTOR_UNMASKED);
             break;
+        }
         case 0xF6: {
             INST_NAME("PSADBW Gx, Ex");
             nextop = F8;
