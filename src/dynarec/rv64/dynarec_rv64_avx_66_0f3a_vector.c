@@ -77,15 +77,58 @@ uintptr_t dynarec64_AVX_66_0F3A_vector(dynarec_rv64_t* dyn, uintptr_t addr, uint
             break;
         }
         case 0x02:
-            INST_NAME("VPBLENDD Gx, Vx, Ex, Imm8");
+        case 0x0C:
+        case 0x0D:
+        case 0x0E: {
+            int sew = VECTOR_SEW32;
+            if (opcode == 0x02) {
+                INST_NAME("VPBLENDD Gx, Vx, Ex, Ib");
+            } else if (opcode == 0x0C) {
+                INST_NAME("VBLENDPS Gx, Vx, Ex, Ib");
+            } else if (opcode == 0x0D) {
+                INST_NAME("VBLENDPD Gx, Vx, Ex, Ib");
+                sew = VECTOR_SEW64;
+            } else {
+                INST_NAME("VPBLENDW Gx, Vx, Ex, Ib");
+                sew = VECTOR_SEW16;
+            }
             nextop = F8;
-            GETGY_empty_VYEY_vector_D(v0, q0, q1, VECTOR_SEW32, 1);
-            u8 = F8;
-            VECTOR_LOAD_VMASK(vex.l ? u8 : (u8 & 0xf), x4);
-            q2 = vpu_get_scratch(dyn);
-            VMERGE_VVM(q2, q0, q1);
-            PUTGY_vector(q2, VECTOR_SEW32);
+            gd = ((nextop & 0x38) >> 3) + (rex.r << 3);
+            if (!MODREG) {
+                SMREAD();
+                addr = geted(dyn, addr, ninst, nextop, &ed, x3, x2, &fixedaddress, rex, NULL, 0, 1);
+            }
+            unsigned width = 16u << vex.l;
+            unsigned all_lanes = (1u << (width >> sew)) - 1;
+            unsigned selected = F8 & all_lanes;
+            if (vex.l && sew == VECTOR_SEW16) selected |= selected << 8;
+            if (MODREG) {
+                ed = (nextop & 7) + (rex.b << 3);
+                if (!selected || selected == all_lanes || vex.v == ed) {
+                    simd_copy(dyn, ninst, x1, gd, selected == all_lanes ? ed : vex.v, width, 1);
+                    break;
+                }
+                q1 = simd_get(dyn, ninst, x1, ed, width, sew, 0);
+            } else {
+                q1 = vpu_get_scratch(dyn);
+                SET_AVX_VECTOR_WIDTH(x1, sew);
+                VLE_V(q1, ed, sew, VECTOR_UNMASKED, VECTOR_NFIELD1);
+                if (!selected) {
+                    simd_copy(dyn, ninst, x1, gd, vex.v, width, 1);
+                    break;
+                }
+                if (selected == all_lanes) {
+                    PUTGY_vector(q1, sew);
+                    break;
+                }
+            }
+            GETVY_vector(q0, sew);
+            GETGY_empty_vector(v0);
+            VECTOR_LOAD_VMASK(selected, x4);
+            VMERGE_VVM(v0, q0, q1);
+            PUTGY_vector(v0, sew);
             break;
+        }
         case 0x04:
             INST_NAME("VPERMILPS Gx, Ex, Ib");
             nextop = F8;
@@ -189,15 +232,6 @@ uintptr_t dynarec64_AVX_66_0F3A_vector(dynarec_rv64_t* dyn, uintptr_t addr, uint
             PUTGY_vector(v0, VECTOR_SEW64);
             break;
         }
-        case 0x0E:
-            INST_NAME("VPBLENDW Gx, Vx, Ex, Ib");
-            nextop = F8;
-            GETGY_empty_VYEY_vector_D(v0, q0, q1, VECTOR_SEW16, 1);
-            u8 = F8;
-            VECTOR_LOAD_VMASK(u8 | (vex.l ? (u8 << 8) : 0), x4);
-            VMERGE_VVM(v0, q0, q1);
-            PUTGY_vector(v0, VECTOR_SEW16);
-            break;
         case 0x18:
         case 0x38:
             if (!vex.l) return 0;
@@ -614,16 +648,6 @@ uintptr_t dynarec64_AVX_66_0F3A_vector(dynarec_rv64_t* dyn, uintptr_t addr, uint
             VFMV_S_F(v0, d2);
             simd_store_reg(dyn, ninst, x1, v0, gd, 16, VECTOR_SEW64);
             break;
-        case 0x0C:
-            INST_NAME("VBLENDPS Gx, Vx, Ex, Ib");
-            nextop = F8;
-            GETGY_empty_VYEY_vector_D(v0, q0, q1, VECTOR_SEW32, 1);
-            u8 = F8;
-            VECTOR_LOAD_VMASK(vex.l ? u8 : (u8 & 0xf), x4);
-            q2 = vpu_get_scratch(dyn);
-            VMERGE_VVM(q2, q0, q1);
-            PUTGY_vector(q2, VECTOR_SEW32);
-            break;
         case 0x14:
             INST_NAME("VPEXTRB Gd, Ex, Ib");
             nextop = F8;
@@ -965,15 +989,6 @@ uintptr_t dynarec64_AVX_66_0F3A_vector(dynarec_rv64_t* dyn, uintptr_t addr, uint
             PUTGY_vector(v0, sew);
             break;
         }
-        case 0x0D:
-            INST_NAME("VBLENDPD Gx, Vx, Ex, Ib");
-            nextop = F8;
-            GETGY_empty_VYEY_vector_D(v0, q0, q1, VECTOR_SEW64, 1);
-            u8 = F8;
-            VECTOR_LOAD_VMASK(vex.l ? (u8 & 0xf) : (u8 & 0x3), x4);
-            VMERGE_VVM(v0, q0, q1);
-            PUTGY_vector(v0, VECTOR_SEW64);
-            break;
         case 0x0F:
             INST_NAME("VPALIGNR Gx, Vx, Ex, Ib");
             nextop = F8;

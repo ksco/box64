@@ -1333,35 +1333,51 @@ uintptr_t dynarec64_660F_vector(dynarec_rv64_t* dyn, uintptr_t addr, uintptr_t i
                     break;
                 }
                 case 0x0C:
-                    INST_NAME("BLENDPS Gx, Ex, Ib");
-                    nextop = F8;
-                    SET_ELEMENT_WIDTH(x1, VECTOR_SEW32);
-                    GETGX_vector(q0, 1, VECTOR_SEW32);
-                    GETEX_vector(q1, 0, 1, VECTOR_SEW32);
-                    u8 = F8;
-                    VECTOR_LOAD_VMASK(u8, x4);
-                    VADD_VI(q0, q1, 0, VECTOR_MASKED);
-                    break;
                 case 0x0D:
-                    INST_NAME("BLENDPD Gx, Ex, Ib");
+                case 0x0E: {
+                    int sew;
+                    if (opcode == 0x0C) {
+                        INST_NAME("BLENDPS Gx, Ex, Ib");
+                        sew = VECTOR_SEW32;
+                    } else if (opcode == 0x0D) {
+                        INST_NAME("BLENDPD Gx, Ex, Ib");
+                        sew = VECTOR_SEW64;
+                    } else {
+                        INST_NAME("PBLENDW Gx, Ex, Ib");
+                        sew = VECTOR_SEW16;
+                    }
                     nextop = F8;
-                    SET_ELEMENT_WIDTH(x1, VECTOR_SEW64);
-                    GETGX_vector(q0, 1, VECTOR_SEW64);
-                    GETEX_vector(q1, 0, 1, VECTOR_SEW64);
-                    u8 = F8;
-                    VECTOR_LOAD_VMASK(u8, x4);
+                    gd = ((nextop & 0x38) >> 3) + (rex.r << 3);
+                    if (!MODREG) {
+                        SMREAD();
+                        addr = geted(dyn, addr, ninst, nextop, &ed, x3, x2, &fixedaddress, rex, NULL, 0, 1);
+                    }
+                    unsigned all_lanes = (1u << (16 >> sew)) - 1;
+                    unsigned selected = F8 & all_lanes;
+                    if (MODREG) {
+                        ed = (nextop & 7) + (rex.b << 3);
+                        if (!selected || gd == ed) break;
+                        if (selected == all_lanes) {
+                            simd_copy(dyn, ninst, x1, gd, ed, 16, 0);
+                            break;
+                        }
+                        q1 = simd_get_reg(dyn, ninst, x1, ed, 0, sew);
+                    } else {
+                        q1 = vpu_get_scratch(dyn);
+                        SET_ELEMENT_WIDTH(x1, sew);
+                        VLE_V(q1, ed, sew, VECTOR_UNMASKED, VECTOR_NFIELD1);
+                        if (!selected) break;
+                        if (selected == all_lanes) {
+                            GETGX_empty_vector(q0);
+                            VMV_V_V(q0, q1);
+                            break;
+                        }
+                    }
+                    GETGX_vector(q0, 1, sew);
+                    VECTOR_LOAD_VMASK(selected, x4);
                     VADD_VI(q0, q1, 0, VECTOR_MASKED);
                     break;
-                case 0x0E:
-                    INST_NAME("PBLENDW Gx, Ex, Ib");
-                    nextop = F8;
-                    SET_ELEMENT_WIDTH(x1, VECTOR_SEW16);
-                    GETGX_vector(q0, 1, VECTOR_SEW16);
-                    GETEX_vector(q1, 0, 1, VECTOR_SEW16);
-                    u8 = F8;
-                    VECTOR_LOAD_VMASK(u8, x4);
-                    VADD_VI(q0, q1, 0, VECTOR_MASKED);
-                    break;
+                }
                 case 0x0F:
                     INST_NAME("PALIGNR Gx, Ex, Ib");
                     nextop = F8;
