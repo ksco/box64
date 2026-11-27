@@ -851,19 +851,15 @@ uintptr_t dynarec64_660F38(dynarec_rv64_t* dyn, uintptr_t addr, uint8_t opcode, 
                         SET_ELEMENT_WIDTH(x1, VECTOR_SEW32);
                         GETGX_vector(v0, 1, VECTOR_SEW32);
                         GETEX_vector(v1, 0, 0, VECTOR_SEW32);
+                        int state = v0;
                         if (v0 == v1) {
-                            v2 = vpu_get_scratch(dyn);
-                            VMV_V_V(v2, v1);
-                            v1 = v2;
+                            state = vpu_get_scratch(dyn);
+                            VMV_V_V(state, v0);
                         }
                         v2 = vpu_get_scratch(dyn);
-                        VXOR_VV(v2, v2, v2, 1);
-                        VAESDF_VV(v0, v2);
-                        v2 = vpu_get_scratch(dyn);
-                        MOV32w(x4, 0x63636363);
-                        VMV_V_X(v2, x4);
-                        VAESDM_VV(v2, v0);
-                        VXOR_VV(v0, v2, v1, 1);
+                        VMV_V_I(v2, 0);
+                        VAESDM_VV(state, v2);
+                        VXOR_VV(v0, state, v1, VECTOR_UNMASKED);
                         break;
                     }
                     GETG;

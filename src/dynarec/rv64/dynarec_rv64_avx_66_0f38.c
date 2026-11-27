@@ -2431,13 +2431,9 @@ uintptr_t dynarec64_AVX_66_0F38(dynarec_rv64_t* dyn, uintptr_t addr, uintptr_t i
                     VLE32_V(v1, ed, VECTOR_UNMASKED, VECTOR_NFIELD1);
                 }
                 v2 = vpu_get_scratch(dyn);
-                VXOR_VV(v2, v2, v2, 1);
-                VAESDF_VV(v0, v2);
-                v2 = vpu_get_scratch(dyn);
-                MOV32w(x4, 0x63636363);
-                VMV_V_X(v2, x4);
-                VAESDM_VV(v2, v0);
-                VXOR_VV(v0, v2, v1, 1);
+                VMV_V_I(v2, 0);
+                VAESDM_VV(v0, v2);
+                VXOR_VV(v0, v0, v1, VECTOR_UNMASKED);
                 simd_store_reg(dyn, ninst, x1, v0, gd, 16 << vex.l, VECTOR_SEW32);
                 break;
             }

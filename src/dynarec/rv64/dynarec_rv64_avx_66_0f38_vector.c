@@ -1173,19 +1173,12 @@ uintptr_t dynarec64_AVX_66_0F38_vector(dynarec_rv64_t* dyn, uintptr_t addr, uint
             INST_NAME("VAESDEC Gx, Vx, Ex");
             nextop = F8;
             GETGY_empty_VYEY_vector(v0, q0, q1, VECTOR_SEW32);
-            if (v0 == q1) {
-                q2 = vpu_get_scratch(dyn);
-                VMV_V_V(q2, q1);
-                q1 = q2;
-            }
-            if (v0 != q0) VMV_V_V(v0, q0);
+            q2 = v0 == q1 ? vpu_get_scratch(dyn) : v0;
+            if (q2 != q0) VMV_V_V(q2, q0);
             v1 = vpu_get_scratch(dyn);
-            VXOR_VV(v1, v1, v1, VECTOR_UNMASKED);
-            VAESDF_VV(v0, v1);
-            MOV32w(x4, 0x63636363);
-            VMV_V_X(v1, x4);
-            VAESDM_VV(v1, v0);
-            VXOR_VV(v0, v1, q1, VECTOR_UNMASKED);
+            VMV_V_I(v1, 0);
+            VAESDM_VV(q2, v1);
+            VXOR_VV(v0, q2, q1, VECTOR_UNMASKED);
             PUTGY_vector(v0, VECTOR_SEW32);
             break;
         case 0xDF:

@@ -1824,7 +1824,16 @@ uintptr_t dynarec64_660F_vector(dynarec_rv64_t* dyn, uintptr_t addr, uintptr_t i
                     }
                     break;
                 }
-                case 0xDF: return 0;
+                case 0xDF:
+                    if (!cpuext.zvkned || (rex.is32bits && rex.is67)) return 0;
+                    INST_NAME("AESKEYGENASSIST Gx, Ex, Ib");
+                    nextop = F8;
+                    SET_ELEMENT_WIDTH(x1, VECTOR_SEW32);
+                    GETEX_vector(q1, 0, 1, VECTOR_SEW32);
+                    GETGX_empty_vector(q0);
+                    u8 = F8;
+                    simd_aeskeygenassist(dyn, ninst, q0, q1, !MODREG, u8);
+                    break;
                 default: DEFAULT_VECTOR;
             }
             break;

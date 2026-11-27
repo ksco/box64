@@ -475,6 +475,33 @@ void simd_compare(dynarec_rv64_t* dyn, int ninst, int dst, int left, int right, 
     VMERGE_VIM(dst, dst, 0x1f);
 }
 
+void simd_aeskeygenassist(dynarec_rv64_t* dyn, int ninst, int dst, int src, int source_in_scratch, unsigned round_constant)
+{
+    int substituted = src;
+    if (!source_in_scratch) {
+        substituted = vpu_get_scratch(dyn);
+        VMV_V_V(substituted, src);
+    }
+    int indices = vpu_get_scratch(dyn);
+    VMV_V_I(indices, 0);
+    VAESEF_VV(substituted, indices);
+    simd_set_width(dyn, ninst, x1, VECTOR_SEW64, 16);
+    const uint64_t low_indices = 0x040b0e010b0e0104ULL;
+    const uint64_t high_indices = 0x0c0306090306090cULL;
+    TABLE64_(x4, high_indices);
+    VMV_S_X(VMASK, x4);
+    TABLE64_(x4, low_indices);
+    VSLIDE1UP_VX(indices, VMASK, x4, VECTOR_UNMASKED);
+    simd_set_width(dyn, ninst, x1, VECTOR_SEW8, 16);
+    VRGATHER_VV(dst, substituted, indices, VECTOR_UNMASKED);
+    if (round_constant) {
+        simd_set_width(dyn, ninst, x1, VECTOR_SEW64, 16);
+        ADDI(x4, xZR, round_constant);
+        SLLI(x4, x4, 32);
+        VXOR_VX(dst, dst, x4, VECTOR_UNMASKED);
+    }
+}
+
 void simd_pcmpistri_negative_equal_each(dynarec_rv64_t* dyn, int ninst, int left, int right, unsigned lanes)
 {
     CLEAR_FLAGS();

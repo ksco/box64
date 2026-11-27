@@ -1250,6 +1250,14 @@ uintptr_t dynarec64_AVX_66_0F3A_vector(dynarec_rv64_t* dyn, uintptr_t addr, uint
         case 0xDF:
             INST_NAME("VAESKEYGENASSIST Gx, Ex, Ib");
             nextop = F8;
+            if (cpuext.zvkned && !vex.l && !(rex.is32bits && rex.is67)) {
+                GETEY_vector(q1, 1, VECTOR_SEW32);
+                GETGY_empty_vector(v0);
+                u8 = F8;
+                simd_aeskeygenassist(dyn, ninst, v0, q1, !MODREG, u8);
+                simd_commit(dyn, ninst, gd, SIMD_XMM, SIMD_HI128);
+                break;
+            }
             GETG;
             simd_forget_fp_reg(dyn, ninst, x6, gd);
             MOV32w(x1, gd);

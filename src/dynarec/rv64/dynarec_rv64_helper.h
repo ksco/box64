@@ -1966,6 +1966,7 @@ void simd_reflect(dynarec_rv64_t* dyn, int ninst, int s1, int s2);
 #define simd_seed_scalar  STEPNAME(simd_seed_scalar)
 #define simd_scalar_arith STEPNAME(simd_scalar_arith)
 #define simd_compare      STEPNAME(simd_compare)
+#define simd_aeskeygenassist STEPNAME(simd_aeskeygenassist)
 #define simd_pcmpistri_negative_equal_each STEPNAME(simd_pcmpistri_negative_equal_each)
 #define simd_pcmpistr       STEPNAME(simd_pcmpistr)
 #define simd_pcmpestr       STEPNAME(simd_pcmpestr)
@@ -1973,6 +1974,7 @@ int simd_write(dynarec_rv64_t* dyn, int ninst, int s1, int a, unsigned bytes, in
 void simd_copy(dynarec_rv64_t* dyn, int ninst, int s1, int dst, int src, unsigned bytes, int vex);
 int simd_seed_scalar(dynarec_rv64_t* dyn, int ninst, int s1, int dst, int src, int sew);
 void simd_compare(dynarec_rv64_t* dyn, int ninst, int dst, int left, int right, unsigned predicate);
+void simd_aeskeygenassist(dynarec_rv64_t* dyn, int ninst, int dst, int src, int source_in_scratch, unsigned round_constant);
 void simd_pcmpistri_negative_equal_each(dynarec_rv64_t* dyn, int ninst, int left, int right, unsigned lanes);
 void simd_pcmpistr(dynarec_rv64_t* dyn, int ninst, int dst, int left, int right, unsigned control);
 void simd_pcmpestr(dynarec_rv64_t* dyn, int ninst, int dst, int left, int right, unsigned control, int wide_lengths);
