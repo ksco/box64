@@ -368,10 +368,25 @@ uintptr_t dynarec64_00_2(dynarec_rv64_t* dyn, uintptr_t addr, uintptr_t ip, int 
             nextop = F8;
             if (MODREG) {
                 GETGDsd;
-                GETED(0);
-                MVxw(x3, gd);
-                MVxw(gd, ed);
-                MVxw(ed, x3);
+                ed = TO_NAT((nextop & 7) + (rex.b << 3));
+                MARKREGsd(ed);
+                if (gd == ed) {
+                    if (NEED_ZEROUP(gd)) ZEROUP_RESULT(gd);
+                } else {
+                    MV(x3, gd);
+                    if (NEED_ZEROUP(gd)) {
+                        ZEXTW2(gd, ed);
+                        UP32_ZERO(gd);
+                    } else {
+                        MV(gd, ed);
+                    }
+                    if (NEED_ZEROUP(ed)) {
+                        ZEXTW2(ed, x3);
+                        UP32_ZERO(ed);
+                    } else {
+                        MV(ed, x3);
+                    }
+                }
             } else {
                 GETGD;
                 addr = geted(dyn, addr, ninst, nextop, &ed, x2, x1, &fixedaddress, rex, LOCK_LOCK, 0, 0);
@@ -613,9 +628,19 @@ uintptr_t dynarec64_00_2(dynarec_rv64_t* dyn, uintptr_t addr, uintptr_t ip, int 
                 INST_NAME("XCHG EAX, Reg");
                 MARKREGsd(gd);
                 MARKREGsd(xRAX);
-                MVxw(x2, xRAX);
-                MVxw(xRAX, gd);
-                MVxw(gd, x2);
+                MV(x2, xRAX);
+                if (NEED_ZEROUP(xRAX)) {
+                    ZEXTW2(xRAX, gd);
+                    UP32_ZERO(xRAX);
+                } else {
+                    MV(xRAX, gd);
+                }
+                if (NEED_ZEROUP(gd)) {
+                    ZEXTW2(gd, x2);
+                    UP32_ZERO(gd);
+                } else {
+                    MV(gd, x2);
+                }
             }
             break;
         case 0x98:

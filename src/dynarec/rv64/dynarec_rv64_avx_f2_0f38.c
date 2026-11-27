@@ -145,31 +145,60 @@ uintptr_t dynarec64_AVX_F2_0F38(dynarec_rv64_t* dyn, uintptr_t addr, uintptr_t i
             MARK2;
             if (gb1) MV(gb1, gd);
             break;
-        case 0xF6:
+        case 0xF6: {
             INST_NAME("MULX Gd, Vd, Ed (,RDX)");
             nextop = F8;
-            GETGDd;
-            GETED(0);
-            GETVD;
+            GETGDw;
+            UP32_WRITE64(gd);
+            vd = TO_NAT(vex.v);
+            if (gd != vd) MARKREGd(vd);
+            if (MODREG) {
+                ed = TO_NAT((nextop & 7) + (rex.b << 3));
+                MARKREGs(ed);
+            } else {
+                SMREAD();
+                addr = geted(dyn, addr, ninst, nextop, &wback, x2, x1, &fixedaddress, rex, NULL, 1, 0);
+                ed = x1;
+                if (rex.w) {
+                    LD(ed, wback, fixedaddress);
+                } else {
+                    LWU(ed, wback, fixedaddress);
+                }
+            }
             if (rex.w) {
                 MARKREGs(xRDX);
-                if ((gd == xRDX) || (gd == ed) || (gd == vd))
-                    gb1 = x3;
-                else
-                    gb1 = gd;
-                MULHU(gb1, xRDX, ed);
-                if (gd != vd) { MUL(vd, xRDX, ed); }
-                if (gb1 == x3) {
-                    MV(gd, gb1);
+                if (gd == vd) {
+                    MULHU(gd, xRDX, ed);
+                } else {
+                    int high = gd == xRDX || gd == ed ? x3 : gd;
+                    MULHU(high, xRDX, ed);
+                    MUL(vd, xRDX, ed);
+                    if (high != gd) { MV(gd, high); }
                 }
             } else {
-                ZEXTW2(x4, xRDX);
-                ZEXTW2(x5, ed);
-                MUL(x3, x4, x5);
-                if (gd != vd) { ZEXTW2(vd, x3); }
-                SRLI(gd, x3, 32);
+                int left = xRDX;
+                int right = ed;
+                if (!isUpper32Zero(dyn, ninst, xRDX)) {
+                    ZEXTW2(x4, xRDX);
+                    left = x4;
+                }
+                if (ed == xRDX) {
+                    right = left;
+                } else if (MODREG && !isUpper32Zero(dyn, ninst, ed)) {
+                    ZEXTW2(x5, ed);
+                    right = x5;
+                }
+                int product = gd != vd && !NEED_ZEROUP32(vd) ? vd : x3;
+                MUL(product, left, right);
+                if (gd != vd && product != vd) {
+                    ZEXTW2(vd, product);
+                    UP32_ZERO(vd);
+                }
+                SRLI(gd, product, 32);
+                UP32_ZERO(gd);
             }
             break;
+        }
         case 0xF7:
             INST_NAME("SHRX Gd, Ed, Vd");
             nextop = F8;
