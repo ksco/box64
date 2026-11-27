@@ -1745,7 +1745,7 @@ uintptr_t dynarec64_660F_vector(dynarec_rv64_t* dyn, uintptr_t addr, uintptr_t i
                     break;
                 }
                 case 0x44:
-                    if (!cpuext.zvbc) return 0;
+                    if (!cpuext.zvbc && !cpuext.zbc) return 0;
                     INST_NAME("PCLMULQDQ Gx, Ex, Ib");
                     nextop = F8;
                     SET_ELEMENT_WIDTH(x1, VECTOR_SEW64);
@@ -1767,9 +1767,22 @@ uintptr_t dynarec64_660F_vector(dynarec_rv64_t* dyn, uintptr_t addr, uintptr_t i
                         }
                     }
                     q4 = vpu_get_scratch(dyn);
-                    VCLMULH_VV(q4, q2, q3, VECTOR_UNMASKED);
-                    VCLMUL_VV(q0, q2, q3, VECTOR_UNMASKED);
-                    VSLIDEUP_VI(q0, q4, 1, VECTOR_UNMASKED);
+                    if (cpuext.zvbc) {
+                        VCLMULH_VV(q4, q2, q3, VECTOR_UNMASKED);
+                        VCLMUL_VV(q0, q2, q3, VECTOR_UNMASKED);
+                        VSLIDEUP_VI(q0, q4, 1, VECTOR_UNMASKED);
+                    } else {
+                        int multiplier = x4;
+                        VMV_X_S(x4, q2);
+                        if (q2 != q3) {
+                            VMV_X_S(x5, q3);
+                            multiplier = x5;
+                        }
+                        CLMULH(x6, x4, multiplier);
+                        CLMUL(x4, x4, multiplier);
+                        VMV_S_X(q4, x6);
+                        VSLIDE1UP_VX(q0, q4, x4, VECTOR_UNMASKED);
+                    }
                     break;
                 case 0x60:
                 case 0x61: {

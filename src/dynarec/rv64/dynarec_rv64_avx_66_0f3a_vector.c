@@ -940,11 +940,38 @@ uintptr_t dynarec64_AVX_66_0F3A_vector(dynarec_rv64_t* dyn, uintptr_t addr, uint
             break;
         }
         case 0x44:
-            if (!cpuext.zvbc) return 0;
+            if (!cpuext.zvbc && !cpuext.zbc) return 0;
             INST_NAME("VPCLMULQDQ Gx, Vx, Ex, Ib");
             nextop = F8;
             GETGY_empty_VYEY_vector_D(v0, q0, q1, VECTOR_SEW64, 1);
             u8 = F8;
+            if (!cpuext.zvbc) {
+                int lane = vpu_get_scratch(dyn);
+                int upper = vex.l ? vpu_get_scratch(dyn) : 0;
+                for (int half = vex.l; half >= 0; --half) {
+                    int left_index = 2 * half + (u8 & 1);
+                    int right_index = 2 * half + ((u8 >> 4) & 1);
+                    if (left_index) {
+                        VSLIDEDOWN_VI(lane, q0, left_index, VECTOR_UNMASKED);
+                    }
+                    VMV_X_S(x4, left_index ? lane : q0);
+                    int multiplier = x4;
+                    if (q0 != q1 || left_index != right_index) {
+                        if (right_index) {
+                            VSLIDEDOWN_VI(lane, q1, right_index, VECTOR_UNMASKED);
+                        }
+                        VMV_X_S(x5, right_index ? lane : q1);
+                        multiplier = x5;
+                    }
+                    CLMULH(x6, x4, multiplier);
+                    CLMUL(x4, x4, multiplier);
+                    VMV_S_X(lane, x6);
+                    VSLIDE1UP_VX(half ? upper : v0, lane, x4, VECTOR_UNMASKED);
+                }
+                if (vex.l) VSLIDEUP_VI(v0, upper, 2, VECTOR_UNMASKED);
+                PUTGY_vector(v0, VECTOR_SEW64);
+                break;
+            }
             q2 = q0;
             q3 = q1;
             if (u8 & 1) {
