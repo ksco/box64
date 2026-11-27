@@ -464,19 +464,21 @@ void doLeaveBlock(dynarec_rv64_t* dyn, int ninst, int s1, int s2, int s3)
 static int indirect_lookup(dynarec_rv64_t* dyn, int ninst, int is32bits, int s1, int s2)
 {
     MAYUSE(dyn);
+    if (!is32bits) {
+        SRLI(s1, xRIP, 48);
+        BNEZ_safe(s1, (intptr_t)dyn->jmp_next - (intptr_t)dyn->block);
+        if (dyn->need_reloc) {
+            TABLE64C(s2, const_jmptbl48);
+        } else {
+            MOV64x(s2, getConst(const_jmptbl48));
+        }
+    } else {
+        TABLE64C(s2, const_jmptbl32);
+    }
     if (cpuext.xtheadbb && cpuext.xtheadmemidx) {
         if (!is32bits) {
-            SRLI(s1, xRIP, 48);
-            BNEZ_safe(s1, (intptr_t)dyn->jmp_next - (intptr_t)dyn->block);
-            if (dyn->need_reloc) {
-                TABLE64C(s2, const_jmptbl48);
-            } else {
-                MOV64x(s2, getConst(const_jmptbl48));
-            }
             TH_EXTU(s1, xRIP, JMPTABL_START2 + JMPTABL_SHIFT2 - 1, JMPTABL_START2);
             TH_LRD(s2, s2, s1, 3);
-        } else {
-            TABLE64C(s2, const_jmptbl32);
         }
         TH_EXTU(s1, xRIP, JMPTABL_START1 + JMPTABL_SHIFT1 - 1, JMPTABL_START1);
         TH_LRD(s2, s2, s1, 3);
@@ -484,27 +486,22 @@ static int indirect_lookup(dynarec_rv64_t* dyn, int ninst, int is32bits, int s1,
         TH_LRD(s1, s2, s1, 3);
     } else {
         if (!is32bits) {
-            SRLI(s1, xRIP, 48);
-            BNEZ_safe(s1, (intptr_t)dyn->jmp_next - (intptr_t)dyn->block);
-            MOV64x(s2, getConst(const_jmptbl48));
             SRLI(s1, xRIP, JMPTABL_START2);
             ADDSL(s2, s2, s1, 3, s1);
             LD(s2, s2, 0);
-        } else {
-            TABLE64C(s2, const_jmptbl32);
         }
-        MOV64x(x4, JMPTABLE_MASK1 << 3);
-        SRLI(s1, xRIP, JMPTABL_START1 - 3);
-        AND(s1, s1, x4);
-        ADD(s2, s2, s1);
+        SLLI(s1, xRIP, 64 - JMPTABL_START2);
+        SRLI(s1, s1, 64 - JMPTABL_SHIFT1);
+        ADDSL(s2, s2, s1, 3, s1);
         LD(s2, s2, 0);
         if (JMPTABLE_MASK0 < 2048) {
             ANDI(s1, xRIP, JMPTABLE_MASK0);
+            ADDSL(s2, s2, s1, 3, s1);
         } else {
-            MOV64x(x4, JMPTABLE_MASK0); // x4 = mask
-            AND(s1, xRIP, x4);
+            SLLI(s1, xRIP, 64 - JMPTABL_SHIFT0);
+            SRLI(s1, s1, 64 - JMPTABL_SHIFT0 - 3);
+            ADD(s2, s2, s1);
         }
-        ADDSL(s2, s2, s1, 3, s1);
         LD(s1, s2, 0);
     }
     return s1;
