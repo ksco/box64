@@ -304,31 +304,74 @@ uintptr_t dynarec64_AVX_0F_vector(dynarec_rv64_t* dyn, uintptr_t addr, uintptr_t
             VFSQRT_V(v0, v1, VECTOR_UNMASKED);
             PUTGY_vector(v0, VECTOR_SEW32);
             break;
-        case 0x52:
+        case 0x52: {
             if (!BOX64ENV(dynarec_fastnan)) return 0;
             INST_NAME("VRSQRTPS Gx, Ex");
             nextop = F8;
             GETEY_vector(v1, 0, VECTOR_SEW32);
             GETGY_empty_vector(v0);
-            v2 = vpu_get_scratch(dyn);
-            MOV32w(x4, 0x3F800000);
-            VMV_V_X(v2, x4);
-            VFSQRT_V(v0, v1, VECTOR_UNMASKED);
-            VFDIV_VV(v0, v2, v0, VECTOR_UNMASKED);
+            if (BOX64ENV(sse_flushto0)) {
+                v2 = vpu_get_scratch(dyn);
+                MOV32w(x4, 0x3F800000);
+                VMV_V_X(v2, x4);
+                VFSQRT_V(v0, v1, VECTOR_UNMASKED);
+                VFDIV_VV(v0, v2, v0, VECTOR_UNMASKED);
+            } else {
+                VEC_SRC_KEEP(v1, v0);
+                const int product = vpu_get_scratch(dyn);
+                const int scaled = vpu_get_scratch(dyn);
+                const int factor = vpu_get_scratch(dyn);
+                VFRSQRT7_V(v0, v1, VECTOR_UNMASKED);
+                VFCLASS_V(product, v0, VECTOR_UNMASKED);
+                ADDI(x4, xZR, 1 << 6);
+                VMSEQ_VX(VMASK, product, x4, VECTOR_UNMASKED);
+                MOV32w(x4, 0x3F000000);
+                d0 = fpu_get_scratch(dyn);
+                FMVWX(d0, x4);
+                VFMUL_VF(scaled, v0, d0, VECTOR_MASKED);
+                VFMUL_VV(product, v1, v0, VECTOR_MASKED);
+                MOV32w(x4, 0x3FC00000);
+                VMV_V_X(factor, x4);
+                VFNMSAC_VV(factor, product, scaled, VECTOR_MASKED);
+                VFMUL_VV(v0, v0, factor, VECTOR_MASKED);
+            }
             PUTGY_vector(v0, VECTOR_SEW32);
             break;
-        case 0x53:
+        }
+        case 0x53: {
             if (!BOX64ENV(dynarec_fastnan)) return 0;
             INST_NAME("VRCPPS Gx, Ex");
             nextop = F8;
             GETEY_vector(v1, 0, VECTOR_SEW32);
             GETGY_empty_vector(v0);
-            v2 = vpu_get_scratch(dyn);
             MOV32w(x4, 0x3F800000);
-            VMV_V_X(v2, x4);
-            VFDIV_VV(v0, v2, v1, VECTOR_UNMASKED);
+            if (!vex.l || BOX64ENV(sse_flushto0)) {
+                v2 = vpu_get_scratch(dyn);
+                VMV_V_X(v2, x4);
+                VFDIV_VV(v0, v2, v1, VECTOR_UNMASKED);
+            } else {
+                int divisor = vpu_get_scratch(dyn);
+                int work = vpu_get_scratch(dyn);
+                const uint32_t overflow_boundary = 0x00200000;
+                const uint32_t infinity = 0x7f800000;
+                VSLL_VI(work, v1, 1, VECTOR_UNMASKED);
+                MOV32w(x5, overflow_boundary << 1);
+                VMSEQ_VX(VMASK, work, x5, VECTOR_UNMASKED);
+                VMV_V_V(divisor, v1);
+                VADD_VI(divisor, divisor, -1, VECTOR_MASKED);
+                VFREC7_V(v0, divisor, VECTOR_UNMASKED);
+                VSLL_VI(work, divisor, 1, VECTOR_UNMASKED);
+                MOV32w(x5, -(overflow_boundary << 1));
+                VADD_VX(work, work, x5, VECTOR_UNMASKED);
+                MOV32w(x5, (infinity - overflow_boundary) << 1);
+                VMSLTU_VX(VMASK, work, x5, VECTOR_UNMASKED);
+                VMV_V_X(work, x4);
+                VFNMSAC_VV(work, divisor, v0, VECTOR_MASKED);
+                VFMACC_VV(v0, work, v0, VECTOR_MASKED);
+            }
             PUTGY_vector(v0, VECTOR_SEW32);
             break;
+        }
         case 0x54:
             INST_NAME("VANDPS Gx, Vx, Ex");
             nextop = F8;
