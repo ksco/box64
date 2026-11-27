@@ -57,32 +57,34 @@ uintptr_t dynarec64_66F20F(dynarec_rv64_t* dyn, uintptr_t addr, uintptr_t ip, in
                     if (rex.w) return dynarec64_F20F(dyn, addr - 2, ip, ninst, rex, ok, need_epilog);
                     INST_NAME("CRC32 Gd, Ew");
                     nextop = F8;
-                    GETGD;
+                    GETGDw;
+                    UP32_WRITE32(gd);
                     GETEW(x1, 0);
-                    MV(x5, ed);
                     if (cpuext.zbc) {
-                        ZEROUP(gd);
-                        XOR(x5, x5, gd);
+                        XOR(x5, ed, gd);
                         SLLI(x5, x5, 48);
-                        MOV64xs(x2, 0x4869EC38DEA713F1ULL, x3);
+                        MOV32w(x2, 0x4869EC38DEA713F1ULL & 0xffff);
                         CLMUL(x5, x5, x2);
-                        MOV64x(x2, 0x105EC76F1ULL);
+                        TABLE64_(x2, 0x105EC76F1ULL);
                         CLMULH(x5, x5, x2);
-                        SRLI(gd, gd, 16);
-                        XOR(gd, x5, gd);
+                        ZEXTW2(x4, gd);
+                        SRLI(x4, x4, 16);
+                        XOR(gd, x5, x4);
                     } else {
+                        XOR(gd, gd, ed);
                         ZEROUP(gd);
-                        MOV32w(x2, 0x82f63b78);
-                        for (int j = 0; j < 2; ++j) {
-                            SRLI(x6, x5, 8 * j);
-                            ANDI(x6, x6, 0xFF);
-                            XOR(gd, gd, x6);
-                            for (int i = 0; i < 8; i++) {
-                                SRLI((i & 1) ? gd : x4, (i & 1) ? x4 : gd, 1);
-                                ANDI(x6, (i & 1) ? x4 : gd, 1);
-                                BEQZ(x6, 4 + 4);
-                                XOR((i & 1) ? gd : x4, (i & 1) ? gd : x4, x2);
+                        TABLE64C(x2, const_crc32c_byte_table);
+                        for (int byte = 0; byte < 2; ++byte) {
+                            ANDI(x4, gd, 0xff);
+                            if (cpuext.zba) {
+                                SH2ADD(x4, x4, x2);
+                            } else {
+                                SLLI(x4, x4, 2);
+                                ADD(x4, x4, x2);
                             }
+                            LWU(x4, x4, 0);
+                            SRLI(gd, gd, 8);
+                            XOR(gd, gd, x4);
                         }
                     }
                     break;

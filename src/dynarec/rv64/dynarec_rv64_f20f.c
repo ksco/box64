@@ -147,63 +147,75 @@ uintptr_t dynarec64_F20F(dynarec_rv64_t* dyn, uintptr_t addr, uintptr_t ip, int 
 
                 case 0xF0: // CRC32 Gd, Eb
                     INST_NAME("CRC32 Gd, Eb");
-                    UP32_WRITE32(gd);
                     nextop = F8;
                     GETEB(x1, 0);
-                    GETGD;
-                    MV(x5, ed);
+                    GETGDw;
+                    UP32_WRITE32(gd);
                     if (cpuext.zbc) {
-                        ZEROUP(gd);
-                        XOR(x5, x5, gd);
+                        XOR(x5, ed, gd);
                         SLLI(x5, x5, 56);
-                        MOV64xs(x2, 0x4869EC38DEA713F1ULL, x3);
+                        ADDI(x2, xZR, 0x4869EC38DEA713F1ULL & 0xff);
                         CLMUL(x5, x5, x2);
-                        MOV64x(x2, 0x105EC76F1ULL);
+                        TABLE64_(x2, 0x105EC76F1ULL);
                         CLMULH(x5, x5, x2);
-                        SRLI(gd, gd, 8);
-                        XOR(gd, x5, gd);
+                        ZEXTW2(x4, gd);
+                        SRLI(x4, x4, 8);
+                        XOR(gd, x5, x4);
                     } else {
-                        if (NEED_ZEROUP32(gd)) ZEROUP_RESULT(gd);
-                        XOR(gd, gd, x5);
-                        MOV32w(x2, 0x82f63b78);
-                        for (int i = 0; i < 8; i++) {
-                            SRLI((i & 1) ? gd : x4, (i & 1) ? x4 : gd, 1);
-                            ANDI(x6, (i & 1) ? x4 : gd, 1);
-                            BEQZ(x6, 4 + 4);
-                            XOR((i & 1) ? gd : x4, (i & 1) ? gd : x4, x2);
+                        XOR(gd, gd, ed);
+                        ZEROUP(gd);
+                        TABLE64C(x2, const_crc32c_byte_table);
+                        ANDI(x4, gd, 0xff);
+                        if (cpuext.zba) {
+                            SH2ADD(x4, x4, x2);
+                        } else {
+                            SLLI(x4, x4, 2);
+                            ADD(x4, x4, x2);
                         }
+                        LWU(x4, x4, 0);
+                        SRLI(gd, gd, 8);
+                        XOR(gd, gd, x4);
                     }
                     break;
                 case 0xF1: // CRC32 Gd, Ed
                     INST_NAME("CRC32 Gd, Ed");
-                    UP32_WRITE32(gd);
                     nextop = F8;
-                    GETGD;
+                    GETGDw;
+                    UP32_WRITE32(gd);
                     GETED(0);
-                    MV(x5, ed);
                     if (cpuext.zbc) {
-                        if (!rex.w) ZEROUP(x5);
-                        ZEROUP(gd);
-                        XOR(x5, x5, gd);
-                        if (!rex.w) SLLI(x5, x5, 32);
-                        MOV64xs(x2, 0x4869EC38DEA713F1ULL, x3);
+                        if (rex.w) {
+                            ZEXTW2(x5, gd);
+                            XOR(x5, x5, ed);
+                            TABLE64_(x2, 0x4869EC38DEA713F1ULL);
+                        } else {
+                            XOR(x5, ed, gd);
+                            SLLI(x5, x5, 32);
+                            MOV64x(x2, (int32_t)0x4869EC38DEA713F1ULL);
+                        }
                         CLMUL(x5, x5, x2);
-                        MOV64x(x2, 0x105EC76F1ULL);
-                        CLMULH(x5, x5, x2);
-                        MV(gd, x5);
+                        TABLE64_(x2, 0x105EC76F1ULL);
+                        CLMULH(gd, x5, x2);
                     } else {
-                        if (NEED_ZEROUP32(gd)) ZEROUP_RESULT(gd);
-                        MOV32w(x2, 0x82f63b78);
-                        for (int j = 0; j < 4 * (rex.w + 1); ++j) {
-                            SRLI(x3, x5, 8 * j);
-                            ANDI(x3, x3, 0xFF);
-                            XOR(gd, gd, x3);
-                            for (int i = 0; i < 8; i++) {
-                                SRLI((i & 1) ? gd : x4, (i & 1) ? x4 : gd, 1);
-                                ANDI(x6, (i & 1) ? x4 : gd, 1);
-                                BEQZ(x6, 4 + 4);
-                                XOR((i & 1) ? gd : x4, (i & 1) ? gd : x4, x2);
+                        if (rex.w) {
+                            ZEXTW2(x5, gd);
+                            XOR(gd, x5, ed);
+                        } else {
+                            XOR(gd, gd, ed);
+                            ZEROUP(gd);
+                        }
+                        TABLE64C(x2, const_crc32c_byte_table);
+                        for (int byte = 0; byte < (4 << rex.w); ++byte) {
+                            ANDI(x4, gd, 0xff);
+                            if (cpuext.zba) {
+                                SH2ADD(x4, x4, x2);
+                            } else {
+                                SLLI(x4, x4, 2);
+                                ADD(x4, x4, x2);
                             }
+                            LWU(x4, x4, 0);
+                            SRLI(gd, gd, 8);
+                            XOR(gd, gd, x4);
                         }
                     }
                     break;
