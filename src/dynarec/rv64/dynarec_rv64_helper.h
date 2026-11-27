@@ -1991,6 +1991,7 @@ void simd_flush_upper(dynarec_rv64_t* dyn, int ninst, int s1, int a);
 #define simd_cache_transform STEPNAME(simd_cache_transform)
 #define rv64_move64    STEPNAME(rv64_move64)
 #define rv64_move32    STEPNAME(rv64_move32)
+#define emit_bswap     STEPNAME(emit_bswap)
 
 #define rvv_set_config STEPNAME(rvv_set_config)
 #define rvv_set_vl_for_width  STEPNAME(rvv_set_vl_for_width)
@@ -2170,6 +2171,7 @@ void simd_cache_transform(dynarec_rv64_t* dyn, int ninst, int cacheupd, int s1, 
 
 void rv64_move64(dynarec_rv64_t* dyn, int ninst, int reg, int64_t val, int s1, int s2);
 void rv64_move32(dynarec_rv64_t* dyn, int ninst, int reg, int32_t val);
+void emit_bswap(dynarec_rv64_t* dyn, int ninst, int dst, int src, int wide, int zero_extend, int work, int other, int mask);
 
 int rvv_set_config(dynarec_rv64_t* dyn, int ninst, int s1, int sew, int lmul, unsigned vl);
 int rvv_set_vl_for_width(dynarec_rv64_t* dyn, int ninst, int s1, int sew, int vlmul, unsigned bytes);

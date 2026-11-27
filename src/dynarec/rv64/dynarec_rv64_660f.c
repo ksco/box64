@@ -1986,7 +1986,7 @@ uintptr_t dynarec64_660F(dynarec_rv64_t* dyn, uintptr_t addr, uintptr_t ip, int 
             INST_NAME("BSWAP Reg");
             gd = TO_NAT((opcode & 7) + (rex.b << 3));
             if (rex.w) {
-                REV8xw(gd, gd, x1, x2, x3, x4);
+                emit_bswap(dyn, ninst, gd, gd, 1, 0, x1, x2, x3);
             } else {
                 // undefined behaviour
                 SRLI(gd, gd, 16);

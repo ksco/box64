@@ -662,7 +662,7 @@ uintptr_t dynarec64_0F_3(dynarec_rv64_t* dyn, uintptr_t addr, uintptr_t ip, int 
             INST_NAME("BSWAP Reg");
             gd = TO_NAT((opcode & 7) + (rex.b << 3));
             MARKREGsd(gd);
-            REV8xw(gd, gd, x1, x2, x3, x4);
+            emit_bswap(dyn, ninst, gd, gd, rex.w, NEED_ZEROUP(gd), x1, x2, x3);
             break;
         case 0xD1:
             INST_NAME("PSRLW Gm, Em");

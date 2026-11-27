@@ -980,14 +980,14 @@ uintptr_t dynarec64_0F_0(dynarec_rv64_t* dyn, uintptr_t addr, uintptr_t ip, int 
                     SMREAD();
                     addr = geted(dyn, addr, ninst, nextop, &ed, x2, x1, &fixedaddress, rex, NULL, 1, 0);
                     LDxw(gd, ed, fixedaddress);
-                    REV8xw(gd, gd, x1, x2, x3, x4);
+                    emit_bswap(dyn, ninst, gd, gd, rex.w, NEED_ZEROUP(gd), x1, x2, x3);
                     break;
                 case 0xF1:
                     INST_NAME("MOVBE Ed, Gd");
                     nextop = F8;
                     GETGD;
                     addr = geted(dyn, addr, ninst, nextop, &wback, x2, x1, &fixedaddress, rex, NULL, 1, 0);
-                    REV8xw(x3, gd, x3, x4, x5, x6);
+                    emit_bswap(dyn, ninst, x3, gd, rex.w, 0, x3, x4, x5);
                     SDxw(x3, wback, fixedaddress);
                     SMWRITE2();
                     break;

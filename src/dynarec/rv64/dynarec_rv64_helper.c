@@ -2343,6 +2343,59 @@ void rv64_move64(dynarec_rv64_t* dyn, int ninst, int reg, int64_t val, int s1, i
     }
 }
 
+void emit_bswap(dynarec_rv64_t* dyn, int ninst, int dst, int src, int wide, int zero_extend, int work, int other, int mask)
+{
+    if (cpuext.zbb || cpuext.xtheadbb) {
+        if (cpuext.zbb) {
+            REV8(dst, src);
+        } else if (!wide && !zero_extend) {
+            TH_REVW(dst, src);
+            return;
+        } else {
+            TH_REV(dst, src);
+        }
+        if (!wide) {
+            SRLI(dst, dst, 32);
+            UP32_ZERO(dst);
+        }
+        return;
+    }
+
+    MOV32w(mask, 0x00ff00ff);
+    if (wide) {
+        SLLI(other, mask, 32);
+        OR(mask, mask, other);
+    }
+    SRLI(other, src, 8);
+    AND(other, other, mask);
+    AND(work, src, mask);
+    SLLI(work, work, 8);
+    OR(work, work, other);
+
+    if (wide) {
+        MOV32w(mask, 0x0000ffff);
+        SLLI(other, mask, 32);
+        OR(mask, mask, other);
+        SRLI(other, work, 16);
+        AND(other, other, mask);
+        AND(work, work, mask);
+        SLLI(work, work, 16);
+        OR(work, work, other);
+        SRLI(other, work, 32);
+        SLLI(work, work, 32);
+    } else {
+        SRLI(other, work, 16);
+        if (zero_extend) {
+            SLLI(work, work, 48);
+            SRLI(work, work, 32);
+            UP32_ZERO(dst);
+        } else {
+            SLLI(work, work, 16);
+        }
+    }
+    OR(dst, work, other);
+}
+
 void fpu_reflectcache(dynarec_rv64_t* dyn, int ninst, int s1, int s2, int s3)
 {
     x87_reflectcache(dyn, ninst, s1, s2, s3);
