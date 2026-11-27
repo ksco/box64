@@ -141,7 +141,9 @@ uintptr_t dynarec64_660F_vector(dynarec_rv64_t* dyn, uintptr_t addr, uintptr_t i
             }
             break;
         case 0x15:
-            INST_NAME("UNPCKHPD Gx, Ex");
+        case 0x6D:
+            if (opcode == 0x15) INST_NAME("UNPCKHPD Gx, Ex");
+            else INST_NAME("PUNPCKHQDQ Gx, Ex");
             nextop = F8;
             SET_ELEMENT_WIDTH(x1, VECTOR_SEW64);
             // GX->q[0] = GX->q[1];
@@ -149,15 +151,19 @@ uintptr_t dynarec64_660F_vector(dynarec_rv64_t* dyn, uintptr_t addr, uintptr_t i
             GETGX_vector(v0, 1, VECTOR_SEW64);
             if (MODREG) {
                 v1 = simd_get_reg(dyn, ninst, x1, (nextop & 7) + (rex.b << 3), 0, VECTOR_SEW64);
-                q0 = vpu_get_scratch(dyn);
-                VSLIDE1DOWN_VX(q0, v0, xZR, VECTOR_UNMASKED);
                 if (cpuext.xtheadvector) {
+                    q0 = vpu_get_scratch(dyn);
+                    VSLIDE1DOWN_VX(q0, v0, xZR, VECTOR_UNMASKED);
                     VECTOR_LOAD_VMASK(0b01, x4);
                     VMERGE_VVM(v0, v1, q0); // implies VMASK
+                } else if (v0 == v1) {
+                    q0 = vpu_get_scratch(dyn);
+                    VRGATHER_VI(q0, v0, 1, VECTOR_UNMASKED);
+                    VMV_V_V(v0, q0);
                 } else {
-                    if (v0 != v1) { VMV_V_V(v0, v1); }
-                    VMV_X_S(x4, q0);
-                    VMV_S_X(v0, x4);
+                    VMV_V_I(VMASK, 1);
+                    VSLIDEDOWN_VI(v0, v0, 1, VECTOR_UNMASKED);
+                    VMERGE_VVM(v0, v1, v0);
                 }
             } else {
                 q0 = vpu_get_scratch(dyn);
@@ -2278,34 +2284,6 @@ uintptr_t dynarec64_660F_vector(dynarec_rv64_t* dyn, uintptr_t addr, uintptr_t i
                 SMREAD();
                 addr = geted(dyn, addr, ninst, nextop, &ed, x3, x2, &fixedaddress, rex, NULL, 0, 0);
                 VLUXEI64_V(v0, q0, ed, VECTOR_MASKED, VECTOR_NFIELD1);
-            }
-            break;
-        case 0x6D:
-            INST_NAME("PUNPCKHQDQ Gx, Ex");
-            nextop = F8;
-            SET_ELEMENT_WIDTH(x1, VECTOR_SEW64);
-            // GX->q[0] = GX->q[1];
-            // GX->q[1] = EX->q[1];
-            GETGX_vector(v0, 1, VECTOR_SEW64);
-            if (MODREG) {
-                v1 = simd_get_reg(dyn, ninst, x1, (nextop & 7) + (rex.b << 3), 0, VECTOR_SEW64);
-                q0 = vpu_get_scratch(dyn);
-                VSLIDE1DOWN_VX(q0, v0, xZR, VECTOR_UNMASKED);
-                if (cpuext.xtheadvector) {
-                    VECTOR_LOAD_VMASK(0b01, x4);
-                    VMERGE_VVM(v0, v1, q0); // implies VMASK
-                } else {
-                    if (v0 != v1) { VMV_V_V(v0, v1); }
-                    VMV_X_S(x4, q0);
-                    VMV_S_X(v0, x4);
-                }
-            } else {
-                q0 = vpu_get_scratch(dyn);
-                VECTOR_LOAD_VMASK(0b10, x1);
-                VSLIDE1DOWN_VX(v0, v0, xZR, VECTOR_UNMASKED);
-                SMREAD();
-                addr = geted(dyn, addr, ninst, nextop, &ed, x3, x2, &fixedaddress, rex, NULL, 0, 0);
-                VLE64_V(v0, ed, VECTOR_MASKED, VECTOR_NFIELD1);
             }
             break;
         case 0x6E:

@@ -98,36 +98,42 @@ uintptr_t dynarec64_AVX_66_0F_vector(dynarec_rv64_t* dyn, uintptr_t addr, uintpt
             SMWRITE2();
             break;
         case 0x14:
-            INST_NAME("VUNPCKLPD Gx, Vx, Ex");
-            nextop = F8;
-            GETGY_empty_VYEY_vector(v0, q0, q1, VECTOR_SEW64);
-            q2 = vpu_get_scratch(dyn);
-            v1 = vpu_get_scratch(dyn);
-            v2 = vpu_get_scratch(dyn);
-            VID_V(q2, VECTOR_UNMASKED);
-            VAND_VI(q2, q2, 2, VECTOR_UNMASKED);
-            VRGATHER_VV_SAFE(v1, q0, q2, VECTOR_UNMASKED);
-            VRGATHER_VV_SAFE(v2, q1, q2, VECTOR_UNMASKED);
-            VECTOR_LOAD_VMASK(0x0a, x4);
-            VMERGE_VVM(v0, v1, v2);
-            PUTGY_vector(v0, VECTOR_SEW64);
-            break;
         case 0x15:
-            INST_NAME("VUNPCKHPD Gx, Vx, Ex");
+        case 0x6C:
+        case 0x6D: {
+            int high = opcode & 1;
+            if (opcode == 0x14) INST_NAME("VUNPCKLPD Gx, Vx, Ex");
+            else if (opcode == 0x15) INST_NAME("VUNPCKHPD Gx, Vx, Ex");
+            else if (high) INST_NAME("VPUNPCKHQDQ Gx, Vx, Ex");
+            else INST_NAME("VPUNPCKLQDQ Gx, Vx, Ex");
             nextop = F8;
             GETGY_empty_VYEY_vector(v0, q0, q1, VECTOR_SEW64);
-            q2 = vpu_get_scratch(dyn);
-            v1 = vpu_get_scratch(dyn);
-            v2 = vpu_get_scratch(dyn);
-            VID_V(q2, VECTOR_UNMASKED);
-            VAND_VI(q2, q2, 2, VECTOR_UNMASKED);
-            VADD_VI(q2, q2, 1, VECTOR_UNMASKED);
-            VRGATHER_VV_SAFE(v1, q0, q2, VECTOR_UNMASKED);
-            VRGATHER_VV_SAFE(v2, q1, q2, VECTOR_UNMASKED);
-            VECTOR_LOAD_VMASK(0x0a, x4);
-            VMERGE_VVM(v0, v1, v2);
+            if (q0 == q1 && !vex.l) {
+                int result = v0 == q0 ? vpu_get_scratch(dyn) : v0;
+                VRGATHER_VI(result, q0, high, VECTOR_UNMASKED);
+                if (result != v0) VMV_V_V(v0, result);
+            } else if (high) {
+                int shifted = v0 == q1 ? vpu_get_scratch(dyn) : v0;
+                VMV_V_I(VMASK, vex.l ? 0xa : 0x2);
+                VSLIDEDOWN_VI(shifted, q0, 1, VECTOR_UNMASKED);
+                VMERGE_VVM(v0, shifted, q1);
+            } else if (v0 == q1) {
+                int shifted = vpu_get_scratch(dyn);
+                VMV_V_I(VMASK, vex.l ? 0xa : 0x2);
+                VSLIDE1UP_VX(shifted, q1, xZR, VECTOR_UNMASKED);
+                VMERGE_VVM(v0, q0, shifted);
+            } else {
+                if (v0 != q0) VMV_V_V(v0, q0);
+                if (vex.l) {
+                    VMV_V_I(VMASK, 0xa);
+                    VSLIDEUP_VI(v0, q1, 1, VECTOR_MASKED);
+                } else {
+                    VSLIDEUP_VI(v0, q1, 1, VECTOR_UNMASKED);
+                }
+            }
             PUTGY_vector(v0, VECTOR_SEW64);
             break;
+        }
         case 0x16:
             INST_NAME("VMOVHPD Gx, Vx, Ex");
             nextop = F8;
@@ -527,49 +533,6 @@ uintptr_t dynarec64_AVX_66_0F_vector(dynarec_rv64_t* dyn, uintptr_t addr, uintpt
             PUTGY_vector(v0, narrow_sew);
             break;
         }
-        case 0x6C:
-            INST_NAME("VPUNPCKLQDQ Gx, Vx, Ex");
-            nextop = F8;
-            GETGY_empty_VYEY_vector_safe(v0, q0, q1, VECTOR_SEW64);
-            if (vex.l) {
-                q2 = vpu_get_scratch(dyn);
-                VID_V(q2, VECTOR_UNMASKED);
-                VAND_VI(q2, q2, 1, VECTOR_UNMASKED);
-                VMSNE_VX(VMASK, q2, xZR, VECTOR_UNMASKED);
-                VMV_V_V(v0, q0);
-                VSLIDEUP_VI(v0, q1, 1, VECTOR_MASKED);
-            } else {
-                VMV_V_V(v0, q0);
-                VSLIDEUP_VI_SAFE(v0, q1, 1, VECTOR_UNMASKED);
-            }
-            PUTGY_vector(v0, VECTOR_SEW64);
-            break;
-        case 0x6D:
-            INST_NAME("VPUNPCKHQDQ Gx, Vx, Ex");
-            nextop = F8;
-            if (vex.l) {
-                GETGY_empty_VYEY_vector_safe(v0, q0, q1, VECTOR_SEW64);
-                q2 = vpu_get_scratch(dyn);
-                v1 = vpu_get_scratch(dyn);
-                v2 = vpu_get_scratch(dyn);
-                VID_V(q2, VECTOR_UNMASKED);
-                VAND_VI(q2, q2, 1, VECTOR_UNMASKED);
-                VMSNE_VX(VMASK, q2, xZR, VECTOR_UNMASKED);
-                VSLIDEDOWN_VI(v1, q0, 1, VECTOR_UNMASKED);
-                VSLIDEDOWN_VI(v2, q1, 1, VECTOR_UNMASKED);
-                VSLIDEUP_VI(v1, v2, 1, VECTOR_MASKED);
-                VMV_V_V(v0, v1);
-            } else {
-                GETGY_empty_VYEY_vector(v0, q0, q1, VECTOR_SEW64);
-                q2 = vpu_get_scratch(dyn);
-                v1 = vpu_get_scratch(dyn);
-                VSLIDEDOWN_VI(q2, q0, 1, VECTOR_UNMASKED);
-                VSLIDEDOWN_VI(v1, q1, 1, VECTOR_UNMASKED);
-                VSLIDEUP_VI_SAFE(q2, v1, 1, VECTOR_UNMASKED);
-                VMV_V_V(v0, q2);
-            }
-            PUTGY_vector(v0, VECTOR_SEW64);
-            break;
         case 0x6E:
             if (vex.l) return 0;
             if (rex.w)

@@ -135,6 +135,31 @@ uintptr_t dynarec64_0F_vector(dynarec_rv64_t* dyn, uintptr_t addr, uintptr_t ip,
         case 0x15:
             INST_NAME(opcode == 0x14 ? "UNPCKLPS Gx, Ex" : "UNPCKHPS Gx, Ex");
             nextop = F8;
+            if (cpuext.zvbb && cpuext.vlen >= 32) {
+                GETG;
+                q0 = simd_access(dyn, ninst, x1, gd, SIMD_XMM, 1);
+                if (MODREG) {
+                    q1 = simd_access(dyn, ninst, x1, (nextop & 7) + (rex.b << 3), SIMD_XMM, 0);
+                } else {
+                    SET_ELEMENT_WIDTH(x1, VECTOR_SEW32);
+                    GETEX_vector(q1, 0, 0, VECTOR_SEW32);
+                }
+                rvv_set_vl_for_width(dyn, ninst, x1, VECTOR_SEW32, VECTOR_LMULF2, 8);
+                int left_pair = vpu_get_scratch(dyn);
+                if (opcode == 0x15) {
+                    VSLIDEDOWN_VI(left_pair, q0, 2, VECTOR_UNMASKED);
+                    int right_pair = q0 == q1 ? left_pair : vpu_get_scratch(dyn);
+                    if (q0 != q1) VSLIDEDOWN_VI(right_pair, q1, 2, VECTOR_UNMASKED);
+                    q1 = right_pair;
+                } else {
+                    VMV_V_V(left_pair, q0);
+                }
+                int odd_words = vpu_get_scratch(dyn);
+                ADDI(x4, xZR, 32);
+                VWSLL_VX(odd_words, q1, x4, VECTOR_UNMASKED);
+                VWADDU_WV(q0, odd_words, left_pair, VECTOR_UNMASKED);
+                break;
+            }
             SET_ELEMENT_WIDTH(x1, VECTOR_SEW32);
             GETGX_vector(q0, 1, VECTOR_SEW32);
             GETEX_vector(q1, 0, 0, VECTOR_SEW32);
@@ -145,8 +170,6 @@ uintptr_t dynarec64_0F_vector(dynarec_rv64_t* dyn, uintptr_t addr, uintptr_t ip,
                 VWADDU_WV(v0, v0, q0, VECTOR_UNMASKED);
                 if (opcode == 0x14) {
                     VMV_V_V(q0, v0);
-                } else if (cpuext.vlen >= 32) {
-                    VSLIDEDOWN_VI(q0, v0, 4, VECTOR_UNMASKED);
                 } else {
                     VMV_V_V(q0, v0 + 1);
                 }

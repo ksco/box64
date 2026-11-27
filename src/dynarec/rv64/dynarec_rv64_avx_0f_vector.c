@@ -113,32 +113,62 @@ uintptr_t dynarec64_AVX_0F_vector(dynarec_rv64_t* dyn, uintptr_t addr, uintptr_t
         case 0x15:
             INST_NAME(opcode == 0x14 ? "VUNPCKLPS Gx, Vx, Ex" : "VUNPCKHPS Gx, Vx, Ex");
             nextop = F8;
-            GETGY_empty_VYEY_vector(v0, q0, q1, VECTOR_SEW32);
-            if (cpuext.zvbb) {
-                d0 = vpu_get_scratch_lmul(dyn, VECTOR_LMUL2);
-                MOV32w(x4, 32);
-                VWSLL_VX(d0, q1, x4, VECTOR_UNMASKED);
-                VWADDU_WV(d0, d0, q0, VECTOR_UNMASKED);
-                if (opcode == 0x14) {
-                    VMV_V_V(v0, d0);
-                } else {
-                    VSLIDEDOWN_VI(v0, d0, 4, VECTOR_UNMASKED);
+            if (cpuext.zvbb && vex.l && opcode == 0x14) {
+                GETGY_empty_VYEY_vector(v0, q0, q1, VECTOR_SEW32);
+                int interleaved = vpu_get_scratch_lmul(dyn, VECTOR_LMUL2);
+                ADDI(x4, xZR, 32);
+                VWSLL_VX(interleaved, q1, x4, VECTOR_UNMASKED);
+                VWADDU_WV(interleaved, interleaved, q0, VECTOR_UNMASKED);
+                VMV_V_V(v0, interleaved);
+                int upper = interleaved + 1;
+                if (cpuext.vlen > 32) {
+                    upper = vpu_get_scratch(dyn);
+                    VSLIDEDOWN_VI(upper, interleaved, 8, VECTOR_UNMASKED);
                 }
-                if (vex.l) {
-                    v1 = d0 + 1;
-                    if (cpuext.vlen > 32 || opcode == 0x15) {
-                        v1 = vpu_get_scratch(dyn);
-                        if (cpuext.vlen > 32) {
-                            VSLIDEDOWN_VI(v1, d0, opcode == 0x14 ? 8 : 12, VECTOR_UNMASKED);
-                        } else {
-                            VSLIDEDOWN_VI(v1, d0 + 1, 4, VECTOR_UNMASKED);
-                        }
-                    }
-                    VSLIDEUP_VI(v0, v1, 4, VECTOR_UNMASKED);
-                }
+                VSLIDEUP_VI(v0, upper, 4, VECTOR_UNMASKED);
                 PUTGY_vector(v0, VECTOR_SEW32);
                 break;
             }
+            if (cpuext.zvbb) {
+                unsigned regions = vex.l ? SIMD_YMM : SIMD_XMM;
+                q0 = simd_access(dyn, ninst, x1, vex.v, regions, 0);
+                if (MODREG) {
+                    q1 = simd_access(dyn, ninst, x1, (nextop & 7) + (rex.b << 3), regions, 0);
+                } else {
+                    GETEY_vector(q1, 0, VECTOR_SEW32);
+                }
+                GETGY_empty_vector(v0);
+                if (vex.l) {
+                    int left_pairs = vpu_get_scratch(dyn);
+                    int right_pairs = q0 == q1 ? left_pairs : vpu_get_scratch(dyn);
+                    SET_AVX_VECTOR_WIDTH(x1, VECTOR_SEW64);
+                    VMV_V_I(VMASK, 0xa);
+                    VCOMPRESS_VM(left_pairs, q0, VMASK);
+                    if (q0 != q1) VCOMPRESS_VM(right_pairs, q1, VMASK);
+                    q0 = left_pairs;
+                    q1 = right_pairs;
+                }
+                rvv_set_vl_for_width(dyn, ninst, x1, VECTOR_SEW32, VECTOR_LMULF2, 8 << vex.l);
+                if (!vex.l && opcode == 0x15) {
+                    int left_pair = vpu_get_scratch(dyn);
+                    int right_pair = q0 == q1 ? left_pair : vpu_get_scratch(dyn);
+                    VSLIDEDOWN_VI(left_pair, q0, 2, VECTOR_UNMASKED);
+                    if (q0 != q1) VSLIDEDOWN_VI(right_pair, q1, 2, VECTOR_UNMASKED);
+                    q0 = left_pair;
+                    q1 = right_pair;
+                } else if (v0 == q0) {
+                    int left_pair = vpu_get_scratch(dyn);
+                    VMV_V_V(left_pair, q0);
+                    q0 = left_pair;
+                }
+                int odd_words = vpu_get_scratch(dyn);
+                ADDI(x4, xZR, 32);
+                VWSLL_VX(odd_words, q1, x4, VECTOR_UNMASKED);
+                VWADDU_WV(v0, odd_words, q0, VECTOR_UNMASKED);
+                PUTGY_vector(v0, VECTOR_SEW32);
+                break;
+            }
+            GETGY_empty_VYEY_vector(v0, q0, q1, VECTOR_SEW32);
             q2 = vpu_get_scratch(dyn);
             v1 = vpu_get_scratch(dyn);
             v2 = vpu_get_scratch(dyn);
