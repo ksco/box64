@@ -83,7 +83,47 @@ uintptr_t dynarec64_AVX_F2_0F38(dynarec_rv64_t* dyn, uintptr_t addr, uintptr_t i
             BEQZ_MARK2(x5);
             ADDI(gd, xZR, 0);
             BEQZ_MARK2(x4);
-            ADDI(x3, xZR, 1);
+            if (cpuext.vector && cpuext.vlen >= 32 && cpuext.zbb && cpuext.zicond) {
+                ADDI(x5, x4, -1);
+                ANDN(x2, x4, x5, x2);
+                AND(x5, x4, x5);
+                ANDI(x3, vd, 1);
+                CZERO_EQZ(gd, x2, x3);
+                BEQZ_MARK2(x5);
+                CPOP(x2, x5);
+                SLTIU(x2, x2, rex.w ? 11 : 8);
+                BNEZ_MARK4(x2);
+
+                rvv_config_t incoming = dyn->rvv;
+                int bit_count = rex.w ? 64 : 32;
+                int grouping = bit_count > cpuext.vlen ? VECTOR_LMUL2 : VECTOR_LMUL1;
+                int selection = vpu_get_scratch(dyn);
+                int source_bits = vpu_get_scratch_lmul(dyn, grouping);
+                int positions = vpu_get_scratch_lmul(dyn, grouping);
+                int deposited = vpu_get_scratch_lmul(dyn, grouping);
+                rvv_set_config(dyn, ninst, x2, VECTOR_SEW64, VECTOR_LMUL1, 1);
+                VMV_S_X(VMASK, vd);
+                VMV_S_X(selection, x4);
+                rvv_set_config(dyn, ninst, x2, VECTOR_SEW8, grouping, bit_count);
+                VMV_V_I(source_bits, 0);
+                VMERGE_VIM(source_bits, source_bits, 1);
+                VIOTA_M(positions, selection, VECTOR_UNMASKED);
+                VRGATHER_VV(deposited, source_bits, positions, VECTOR_UNMASKED);
+                VMSNE_VI(VMASK, deposited, 0, VECTOR_UNMASKED);
+                VMAND_MM(VMASK, VMASK, selection);
+                rvv_set_config(dyn, ninst, x2, VECTOR_SEW64, VECTOR_LMUL1, 1);
+                VMV_X_S(gd, VMASK);
+                if (!rex.w) { ZEXTW2(gd, gd); }
+                if (incoming.vl)
+                    rvv_set_config(dyn, ninst, x2, incoming.sew, incoming.lmul, incoming.vl);
+                dyn->rvv = incoming;
+                B_MARK2_nocond;
+                MARK4;
+                MV(x4, x5);
+                ADDI(x3, xZR, 2);
+            } else {
+                ADDI(x3, xZR, 1);
+            }
             MARK;
             ADDI(x5, x4, -1);
             ANDN(x2, x4, x5, x2);
