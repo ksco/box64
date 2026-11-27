@@ -912,72 +912,72 @@ uintptr_t dynarec64_AVX_66_0F_vector(dynarec_rv64_t* dyn, uintptr_t addr, uintpt
             break;
         }
         case 0xD1:
-            INST_NAME("VPSRLW Gx, Vx, Ex");
-            nextop = F8;
-            GETVY_vector(q0, VECTOR_SEW16);
-            GETEY128_vector(q1, 0, VECTOR_SEW64);
-            GETGY_empty_vector(v0);
-            VMV_X_S(x4, q1);
-            SET_AVX_VECTOR_WIDTH(x1, VECTOR_SEW16);
-            SLTIU(x5, x4, 16);
-            SUB(x5, xZR, x5);
-            VSRL_VX(v0, q0, x4, VECTOR_UNMASKED);
-            VAND_VX(v0, v0, x5, VECTOR_UNMASKED);
-            PUTGY_vector(v0, VECTOR_SEW16);
-            break;
         case 0xD2:
-            INST_NAME("VPSRLD Gx, Vx, Ex");
-            nextop = F8;
-            GETVY_vector(q0, VECTOR_SEW32);
-            GETEY128_vector(q1, 0, VECTOR_SEW64);
-            GETGY_empty_vector(v0);
-            VMV_X_S(x4, q1);
-            SET_AVX_VECTOR_WIDTH(x1, VECTOR_SEW32);
-            SLTIU(x5, x4, 32);
-            SUB(x5, xZR, x5);
-            VSRL_VX(v0, q0, x4, VECTOR_UNMASKED);
-            VAND_VX(v0, v0, x5, VECTOR_UNMASKED);
-            PUTGY_vector(v0, VECTOR_SEW32);
-            break;
         case 0xD3:
-            INST_NAME("VPSRLQ Gx, Vx, Ex");
-            nextop = F8;
-            GETVY_vector(q0, VECTOR_SEW64);
-            GETEY128_vector(q1, 0, VECTOR_SEW64);
-            GETGY_empty_vector(v0);
-            VMV_X_S(x4, q1);
-            SLTIU(x5, x4, 64);
-            SUB(x5, xZR, x5);
-            VSRL_VX(v0, q0, x4, VECTOR_UNMASKED);
-            VAND_VX(v0, v0, x5, VECTOR_UNMASKED);
-            PUTGY_vector(v0, VECTOR_SEW64);
-            break;
         case 0xE1:
-            INST_NAME("VPSRAW Gx, Vx, Ex");
-            nextop = F8;
-            GETVY_vector(q0, VECTOR_SEW16);
-            GETEY128_vector(q1, 0, VECTOR_SEW64);
-            GETGY_empty_vector(v0);
-            VMV_X_S(x4, q1);
-            ADDI(x5, xZR, 15);
-            MINU(x4, x4, x5);
-            SET_AVX_VECTOR_WIDTH(x1, VECTOR_SEW16);
-            VSRA_VX(v0, q0, x4, VECTOR_UNMASKED);
-            PUTGY_vector(v0, VECTOR_SEW16);
-            break;
         case 0xE2:
-            INST_NAME("VPSRAD Gx, Vx, Ex");
+        case 0xF1:
+        case 0xF2:
+        case 0xF3: {
+            switch (opcode) {
+                case 0xD1: INST_NAME("VPSRLW Gx, Vx, Ex"); break;
+                case 0xD2: INST_NAME("VPSRLD Gx, Vx, Ex"); break;
+                case 0xD3: INST_NAME("VPSRLQ Gx, Vx, Ex"); break;
+                case 0xE1: INST_NAME("VPSRAW Gx, Vx, Ex"); break;
+                case 0xE2: INST_NAME("VPSRAD Gx, Vx, Ex"); break;
+                case 0xF1: INST_NAME("VPSLLW Gx, Vx, Ex"); break;
+                case 0xF2: INST_NAME("VPSLLD Gx, Vx, Ex"); break;
+                case 0xF3: INST_NAME("VPSLLQ Gx, Vx, Ex"); break;
+            }
+            const int element_sew = VECTOR_SEW8 + (opcode & 0x0f);
+            const int element_bits = 8 << element_sew;
+            const int arithmetic = opcode == 0xE1 || opcode == 0xE2;
+            const unsigned width = 16 << vex.l;
             nextop = F8;
-            GETVY_vector(q0, VECTOR_SEW32);
-            GETEY128_vector(q1, 0, VECTOR_SEW64);
-            GETGY_empty_vector(v0);
-            VMV_X_S(x4, q1);
-            ADDI(x5, xZR, 31);
-            MINU(x4, x4, x5);
-            SET_AVX_VECTOR_WIDTH(x1, VECTOR_SEW32);
-            VSRA_VX(v0, q0, x4, VECTOR_UNMASKED);
-            PUTGY_vector(v0, VECTOR_SEW32);
+            q0 = simd_access(dyn, ninst, x1, vex.v, vex.l ? SIMD_YMM : SIMD_XMM, 0);
+            if (MODREG) {
+                ed = (nextop & 7) + (rex.b << 3);
+                q1 = simd_access(dyn, ninst, x1, ed, SIMD_LO64, 0);
+            } else {
+                q1 = vpu_get_scratch(dyn);
+                SMREAD();
+                addr = geted(dyn, addr, ninst, nextop, &ed, x3, x2, &fixedaddress, rex, NULL, 0, 0);
+                simd_set_width(dyn, ninst, x1, VECTOR_SEW64, 16);
+                VLE64_V(q1, ed, VECTOR_UNMASKED, VECTOR_NFIELD1);
+            }
+            if (element_sew != VECTOR_SEW64) {
+                if (!dyn->rvv.vl || dyn->rvv.sew != VECTOR_SEW64 || dyn->rvv.lmul != VECTOR_LMUL1)
+                    simd_set_width(dyn, ninst, x1, VECTOR_SEW64, 8);
+                int bounded_count = vpu_get_scratch(dyn);
+                const int count_limit = arithmetic ? element_bits - 1 : element_bits;
+                ADDI(x5, xZR, count_limit);
+                VMINU_VX(bounded_count, q1, x5, VECTOR_UNMASKED);
+                q1 = bounded_count;
+            } else {
+                ADDI(x5, xZR, 63);
+            }
+            gd = ((nextop >> 3) & 7) + (rex.r << 3);
+            v0 = simd_write(dyn, ninst, x1, gd, width, element_sew);
+            int shift_counts = vpu_get_scratch(dyn);
+            VRGATHER_VI(shift_counts, q1, 0, VECTOR_UNMASKED);
+            if (arithmetic) {
+                VSRA_VV(v0, q0, shift_counts, VECTOR_UNMASKED);
+            } else {
+                if (element_sew == VECTOR_SEW64) {
+                    VMSGTU_VX(VMASK, shift_counts, x5, VECTOR_UNMASKED);
+                } else {
+                    VMSEQ_VX(VMASK, shift_counts, x5, VECTOR_UNMASKED);
+                }
+                if (opcode < 0xF1) {
+                    VSRL_VV(v0, q0, shift_counts, VECTOR_UNMASKED);
+                } else {
+                    VSLL_VV(v0, q0, shift_counts, VECTOR_UNMASKED);
+                }
+                VMERGE_VIM(v0, v0, 0);
+            }
+            if (!vex.l) simd_commit(dyn, ninst, gd, 0, SIMD_HI128);
             break;
+        }
         case 0xD6:
             if (vex.l) return 0;
             INST_NAME("VMOVQ Ex, Gx");
@@ -1176,47 +1176,6 @@ uintptr_t dynarec64_AVX_66_0F_vector(dynarec_rv64_t* dyn, uintptr_t addr, uintpt
             nextop = F8;
             GETGY_empty_VYEY_vector(v0, q0, q1, VECTOR_SEW64);
             VXOR_VV(v0, q0, q1, VECTOR_UNMASKED);
-            PUTGY_vector(v0, VECTOR_SEW64);
-            break;
-        case 0xF1:
-            INST_NAME("VPSLLW Gx, Vx, Ex");
-            nextop = F8;
-            GETVY_vector(q0, VECTOR_SEW16);
-            GETEY128_vector(q1, 0, VECTOR_SEW64);
-            GETGY_empty_vector(v0);
-            VMV_X_S(x4, q1);
-            SET_AVX_VECTOR_WIDTH(x1, VECTOR_SEW16);
-            SLTIU(x5, x4, 16);
-            SUB(x5, xZR, x5);
-            VSLL_VX(v0, q0, x4, VECTOR_UNMASKED);
-            VAND_VX(v0, v0, x5, VECTOR_UNMASKED);
-            PUTGY_vector(v0, VECTOR_SEW16);
-            break;
-        case 0xF2:
-            INST_NAME("VPSLLD Gx, Vx, Ex");
-            nextop = F8;
-            GETVY_vector(q0, VECTOR_SEW32);
-            GETEY128_vector(q1, 0, VECTOR_SEW64);
-            GETGY_empty_vector(v0);
-            VMV_X_S(x4, q1);
-            SET_AVX_VECTOR_WIDTH(x1, VECTOR_SEW32);
-            SLTIU(x5, x4, 32);
-            SUB(x5, xZR, x5);
-            VSLL_VX(v0, q0, x4, VECTOR_UNMASKED);
-            VAND_VX(v0, v0, x5, VECTOR_UNMASKED);
-            PUTGY_vector(v0, VECTOR_SEW32);
-            break;
-        case 0xF3:
-            INST_NAME("VPSLLQ Gx, Vx, Ex");
-            nextop = F8;
-            GETVY_vector(q0, VECTOR_SEW64);
-            GETEY128_vector(q1, 0, VECTOR_SEW64);
-            GETGY_empty_vector(v0);
-            VMV_X_S(x4, q1);
-            SLTIU(x5, x4, 64);
-            SUB(x5, xZR, x5);
-            VSLL_VX(v0, q0, x4, VECTOR_UNMASKED);
-            VAND_VX(v0, v0, x5, VECTOR_UNMASKED);
             PUTGY_vector(v0, VECTOR_SEW64);
             break;
         case 0xF4: {

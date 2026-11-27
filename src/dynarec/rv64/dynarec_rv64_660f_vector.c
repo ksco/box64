@@ -2783,20 +2783,92 @@ uintptr_t dynarec64_660F_vector(dynarec_rv64_t* dyn, uintptr_t addr, uintptr_t i
         case 0xD1:
         case 0xD2:
         case 0xD3:
-            if (opcode == 0xD1) {
-                INST_NAME("PSRLW Gx, Ex");
-                u8 = VECTOR_SEW16;
-                i32 = 16;
-            } else if (opcode == 0xD2) {
-                INST_NAME("PSRLD Gx, Ex");
-                u8 = VECTOR_SEW32;
-                i32 = 32;
-            } else {
-                INST_NAME("PSRLQ Gx, Ex");
-                u8 = VECTOR_SEW64;
-                i32 = 64;
+        case 0xE1:
+        case 0xE2:
+        case 0xF1:
+        case 0xF2:
+        case 0xF3: {
+            switch (opcode) {
+                case 0xD1: INST_NAME("PSRLW Gx, Ex"); break;
+                case 0xD2: INST_NAME("PSRLD Gx, Ex"); break;
+                case 0xD3: INST_NAME("PSRLQ Gx, Ex"); break;
+                case 0xE1: INST_NAME("PSRAW Gx, Ex"); break;
+                case 0xE2: INST_NAME("PSRAD Gx, Ex"); break;
+                case 0xF1: INST_NAME("PSLLW Gx, Ex"); break;
+                case 0xF2: INST_NAME("PSLLD Gx, Ex"); break;
+                case 0xF3: INST_NAME("PSLLQ Gx, Ex"); break;
             }
+            const int element_sew = VECTOR_SEW8 + (opcode & 0x0f);
+            const int element_bits = 8 << element_sew;
+            const int arithmetic = opcode == 0xE1 || opcode == 0xE2;
+            const int left_shift = opcode >= 0xF1;
             nextop = F8;
+            GETG;
+            if (!cpuext.xtheadvector && (MODREG || (arithmetic && !cpuext.zbb))) {
+                if (MODREG) {
+                    ed = (nextop & 7) + (rex.b << 3);
+                    q1 = simd_access(dyn, ninst, x1, ed, SIMD_LO64, 0);
+                } else {
+                    SMREAD();
+                    addr = geted(dyn, addr, ninst, nextop, &ed, x3, x2, &fixedaddress, rex, NULL, 0, 0);
+                    q1 = vpu_get_scratch(dyn);
+                    simd_set_width(dyn, ninst, x1, VECTOR_SEW64, 8);
+                    VLE64_V(q1, ed, VECTOR_UNMASKED, VECTOR_NFIELD1);
+                }
+                ADDI(x4, xZR, element_bits - (arithmetic || element_sew == VECTOR_SEW64));
+                if (element_sew != VECTOR_SEW64) {
+                    if (!dyn->rvv.vl || dyn->rvv.sew != VECTOR_SEW64 || dyn->rvv.lmul != VECTOR_LMUL1)
+                        simd_set_width(dyn, ninst, x1, VECTOR_SEW64, 8);
+                    int limited = vpu_get_scratch(dyn);
+                    VMINU_VX(limited, q1, x4, VECTOR_UNMASKED);
+                    q1 = limited;
+                }
+                q0 = simd_get(dyn, ninst, x1, gd, 16, element_sew, 1);
+                int counts = vpu_get_scratch(dyn);
+                VRGATHER_VI(counts, q1, 0, VECTOR_UNMASKED);
+                if (arithmetic) {
+                    VSRA_VV(q0, q0, counts, VECTOR_UNMASKED);
+                } else {
+                    if (element_sew == VECTOR_SEW64) {
+                        VMSGTU_VX(VMASK, counts, x4, VECTOR_UNMASKED);
+                    } else {
+                        VMSEQ_VX(VMASK, counts, x4, VECTOR_UNMASKED);
+                    }
+                    if (left_shift) {
+                        VSLL_VV(q0, q0, counts, VECTOR_UNMASKED);
+                    } else {
+                        VSRL_VV(q0, q0, counts, VECTOR_UNMASKED);
+                    }
+                    VMERGE_VIM(q0, q0, 0);
+                }
+                break;
+            }
+            if (arithmetic) {
+                if (!cpuext.xtheadvector) {
+                    SMREAD();
+                    addr = geted(dyn, addr, ninst, nextop, &wback, x3, x2, &fixedaddress, rex, NULL, 1, 0);
+                    LD(x4, wback, fixedaddress);
+                    ADDI(x5, xZR, element_bits - 1);
+                    MINU(x4, x4, x5);
+                } else {
+                    if (MODREG) {
+                        q1 = simd_get(dyn, ninst, x1, (nextop & 7) + (rex.b << 3), 8, VECTOR_SEW64, 0);
+                    } else {
+                        SMREAD();
+                        addr = geted(dyn, addr, ninst, nextop, &ed, x3, x2, &fixedaddress, rex, NULL, 0, 0);
+                        q1 = vpu_get_scratch(dyn);
+                        rvv_set_config(dyn, ninst, x1, VECTOR_SEW64, VECTOR_LMUL1, 1);
+                        VLE64_V(q1, ed, VECTOR_UNMASKED, VECTOR_NFIELD1);
+                    }
+                    int limited = vpu_get_scratch(dyn);
+                    ADDI(x4, xZR, element_bits - 1);
+                    VMINU_VX(limited, q1, x4, VECTOR_UNMASKED);
+                    VMV_X_S(x4, limited);
+                }
+                q0 = simd_get(dyn, ninst, x1, gd, 16, element_sew, 1);
+                VSRA_VX(q0, q0, x4, VECTOR_UNMASKED);
+                break;
+            }
             SET_ELEMENT_WIDTH(x1, VECTOR_SEW64);
             GETGX_vector(q0, 1, VECTOR_SEW64);
             if (MODREG) {
@@ -2807,12 +2879,17 @@ uintptr_t dynarec64_660F_vector(dynarec_rv64_t* dyn, uintptr_t addr, uintptr_t i
                 addr = geted(dyn, addr, ninst, nextop, &wback, x3, x2, &fixedaddress, rex, NULL, 0, 0);
                 LD(x4, wback, fixedaddress);
             }
-            SET_ELEMENT_WIDTH(x1, u8);
-            SLTIU(x3, x4, i32);
+            SET_ELEMENT_WIDTH(x1, element_sew);
+            SLTIU(x3, x4, element_bits);
             SUB(x3, xZR, x3);
-            VSRL_VX(q0, q0, x4, VECTOR_UNMASKED);
+            if (left_shift) {
+                VSLL_VX(q0, q0, x4, VECTOR_UNMASKED);
+            } else {
+                VSRL_VX(q0, q0, x4, VECTOR_UNMASKED);
+            }
             VAND_VX(q0, q0, x3, VECTOR_UNMASKED);
             break;
+        }
         case 0xD4:
             INST_NAME("PADDQ Gx, Ex");
             nextop = F8;
@@ -2960,27 +3037,6 @@ uintptr_t dynarec64_660F_vector(dynarec_rv64_t* dyn, uintptr_t addr, uintptr_t i
             }
             break;
         }
-        case 0xE1:
-        case 0xE2:
-            INST_NAME(opcode == 0xE1 ? "PSRAW Gx, Ex" : "PSRAD Gx, Ex");
-            nextop = F8;
-            GETG;
-            if (MODREG) {
-                q1 = simd_get(dyn, ninst, x1, (nextop & 7) + (rex.b << 3), 8, VECTOR_SEW64, 0);
-            } else {
-                SMREAD();
-                addr = geted(dyn, addr, ninst, nextop, &ed, x3, x2, &fixedaddress, rex, NULL, 0, 0);
-                q1 = vpu_get_scratch(dyn);
-                rvv_set_config(dyn, ninst, x1, VECTOR_SEW64, VECTOR_LMUL1, 1);
-                VLE64_V(q1, ed, VECTOR_UNMASKED, VECTOR_NFIELD1);
-            }
-            v1 = vpu_get_scratch(dyn);
-            ADDI(x4, xZR, opcode == 0xE1 ? 15 : 31);
-            VMINU_VX(v1, q1, x4, VECTOR_UNMASKED);
-            VMV_X_S(x4, v1);
-            q0 = simd_get(dyn, ninst, x1, gd, 16, opcode == 0xE1 ? VECTOR_SEW16 : VECTOR_SEW32, 1);
-            VSRA_VX(q0, q0, x4, VECTOR_UNMASKED);
-            break;
         case 0xE4:
             INST_NAME("PMULHUW Gx, Ex");
             nextop = F8;
@@ -3151,39 +3207,6 @@ uintptr_t dynarec64_660F_vector(dynarec_rv64_t* dyn, uintptr_t addr, uintptr_t i
                 GETEX_vector(q1, 0, 0, dyn->vector_eew);
                 VXOR_VV(q0, q1, q0, VECTOR_UNMASKED);
             }
-            break;
-        case 0xF1:
-        case 0xF2:
-        case 0xF3:
-            if (opcode == 0xF1) {
-                INST_NAME("PSLLW Gx, Ex");
-                u8 = VECTOR_SEW16;
-                i32 = 16;
-            } else if (opcode == 0xF2) {
-                INST_NAME("PSLLD Gx, Ex");
-                u8 = VECTOR_SEW32;
-                i32 = 32;
-            } else {
-                INST_NAME("PSLLQ Gx, Ex");
-                u8 = VECTOR_SEW64;
-                i32 = 64;
-            }
-            nextop = F8;
-            SET_ELEMENT_WIDTH(x1, VECTOR_SEW64);
-            GETGX_vector(q0, 1, VECTOR_SEW64);
-            if (MODREG) {
-                q1 = simd_get_reg(dyn, ninst, x1, (nextop & 7) + (rex.b << 3), 0, VECTOR_SEW64);
-                VMV_X_S(x4, q1);
-            } else {
-                SMREAD();
-                addr = geted(dyn, addr, ninst, nextop, &wback, x3, x2, &fixedaddress, rex, NULL, 0, 0);
-                LD(x4, wback, fixedaddress);
-            }
-            SET_ELEMENT_WIDTH(x1, u8);
-            SLTIU(x3, x4, i32);
-            SUB(x3, xZR, x3);
-            VSLL_VX(q0, q0, x4, VECTOR_UNMASKED);
-            VAND_VX(q0, q0, x3, VECTOR_UNMASKED);
             break;
         case 0xF4:
             INST_NAME("PMULUDQ Gx, Ex");

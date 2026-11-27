@@ -632,22 +632,6 @@
         }                                                                                        \
     } while (0)
 
-// Get EY as a 128bits vector, even if vex.l is set
-#define GETEY128_vector(a, D, sew)                                                               \
-    do {                                                                                         \
-        if (MODREG) {                                                                            \
-            a = VREG((nextop & 7) + (rex.b << 3));                                               \
-            simd_load_reg(dyn, ninst, x1, a, (nextop & 7) + (rex.b << 3), 16, sew);              \
-        } else {                                                                                 \
-            a = vpu_get_scratch(dyn);                                                            \
-            SMREAD();                                                                            \
-            addr = geted(dyn, addr, ninst, nextop, &ed, x3, x2, &fixedaddress, rex, NULL, 0, D); \
-            simd_set_width(dyn, ninst, x1, sew, 16);                                             \
-            VLE_V(a, ed, sew, VECTOR_UNMASKED, VECTOR_NFIELD1);                                  \
-        }                                                                                        \
-        SET_AVX_VECTOR_WIDTH(x1, sew);                                                           \
-    } while (0)
-
 #define VEC_SRC_KEEP(a, dst)                  \
     do {                                      \
         if ((a) == (dst)) {                   \
