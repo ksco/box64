@@ -362,7 +362,7 @@ void simd_copy(dynarec_rv64_t* dyn, int ninst, int s1, int dst, int src, unsigne
     simd_cache_t value = dyn->e.simd[src];
     int to = simd_allocate(dyn, ninst, s1, dst);
     simd_cache_t* c = &dyn->e.simd[dst];
-    if (cpuext.xtheadvector || (!vex && bytes == 16 && (c->valid & SIMD_HI128))) {
+    if (cpuext.xtheadvector || (!vex && (c->valid & ~regions))) {
         rvv_set_vl_for_width(dyn, ninst, s1, VECTOR_SEWANY, VECTOR_LMUL1, bytes);
         VMV_V_V(to, from);
     } else {

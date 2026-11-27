@@ -121,21 +121,21 @@ uintptr_t dynarec64_AVX_F3_0F_vector(dynarec_rv64_t* dyn, uintptr_t addr, uintpt
         case 0x7E:
             INST_NAME("VMOVQ Gx, Ex");
             nextop = F8;
+            gd = ((nextop >> 3) & 7) + (rex.r << 3);
             if (MODREG) {
-                v1 = vpu_get_scratch(dyn);
-                simd_load_reg(dyn, ninst, x1, v1, (nextop & 7) + (rex.b << 3), 16, VECTOR_SEW64);
-                SET_AVX_VECTOR_WIDTH(x1, VECTOR_SEW64);
-                VMV_X_S(x5, v1);
+                ed = (nextop & 7) + (rex.b << 3);
+                simd_copy(dyn, ninst, x1, gd, ed, 8, 1);
+                simd_commit(dyn, ninst, gd, 0, SIMD_HI64 | SIMD_HI128);
             } else {
                 SMREAD();
                 addr = geted(dyn, addr, ninst, nextop, &ed, x2, x3, &fixedaddress, rex, NULL, 0, 0);
                 LD(x5, ed, fixedaddress);
+                GETGY_empty_vector(v0);
+                SET_AVX_VECTOR_WIDTH(x1, VECTOR_SEW64);
+                VXOR_VV(v0, v0, v0, VECTOR_UNMASKED);
+                VMV_S_X(v0, x5);
+                simd_store_reg(dyn, ninst, x1, v0, gd, 16, VECTOR_SEW64);
             }
-            GETGY_empty_vector(v0);
-            SET_AVX_VECTOR_WIDTH(x1, VECTOR_SEW64);
-            VXOR_VV(v0, v0, v0, VECTOR_UNMASKED);
-            VMV_S_X(v0, x5);
-            simd_store_reg(dyn, ninst, x1, v0, gd, 16, VECTOR_SEW64);
             break;
         case 0x12:
         case 0x16: {

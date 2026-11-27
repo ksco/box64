@@ -2700,10 +2700,17 @@ uintptr_t dynarec64_660F_vector(dynarec_rv64_t* dyn, uintptr_t addr, uintptr_t i
                 LHU(x4, ed, fixedaddress);
                 ed = x4;
             }
-            VECTOR_LOAD_VMASK((1 << u8), x5);
-            v0 = vpu_get_scratch(dyn);
-            VMERGE_VXM(v0, q0, ed); // uses VMASK
-            VMV_V_V(q0, v0);
+            if (cpuext.xtheadvector) {
+                VECTOR_LOAD_VMASK(1 << u8, x5);
+                v0 = vpu_get_scratch(dyn);
+                VMERGE_VXM(v0, q0, ed);
+                VMV_V_V(q0, v0);
+            } else if (!u8) {
+                VMV_S_X(q0, ed);
+            } else {
+                VECTOR_LOAD_VMASK(1 << u8, x5);
+                VMERGE_VXM(q0, q0, ed);
+            }
             break;
         case 0xC5:
             INST_NAME("PEXTRW Gd, Ex, Ib");
@@ -2825,16 +2832,21 @@ uintptr_t dynarec64_660F_vector(dynarec_rv64_t* dyn, uintptr_t addr, uintptr_t i
         case 0xD6:
             INST_NAME("MOVQ Ex, Gx");
             nextop = F8;
-            SET_ELEMENT_WIDTH(x1, VECTOR_SEW64);
-            GETGX_vector(q0, 1, VECTOR_SEW64);
+            gd = ((nextop >> 3) & 7) + (rex.r << 3);
             if (MODREG) {
-                q1 = simd_get_reg_empty(dyn, ninst, x1, (nextop & 7) + (rex.b << 3));
-                VMV_X_S(x4, q0);
-                if (!cpuext.xtheadvector) {
-                    VXOR_VV(q1, q1, q1, VECTOR_UNMASKED);
+                ed = (nextop & 7) + (rex.b << 3);
+                if (cpuext.xtheadvector) {
+                    q0 = simd_get_reg(dyn, ninst, x1, gd, 0, VECTOR_SEW64);
+                    q1 = simd_get_reg_empty(dyn, ninst, x1, ed);
+                    VMV_X_S(x4, q0);
+                    VMV_S_X(q1, x4);
+                } else {
+                    simd_copy(dyn, ninst, x1, ed, gd, 8, 0);
+                    simd_commit(dyn, ninst, ed, 0, SIMD_HI64);
                 }
-                VMV_S_X(q1, x4);
             } else {
+                q0 = simd_access(dyn, ninst, x1, gd, SIMD_LO64, 0);
+                SET_ELEMENT_WIDTH(x1, VECTOR_SEW64);
                 addr = geted(dyn, addr, ninst, nextop, &ed, x2, x3, &fixedaddress, rex, NULL, 1, 0);
                 VMV_X_S(x4, q0);
                 SD(x4, ed, fixedaddress);

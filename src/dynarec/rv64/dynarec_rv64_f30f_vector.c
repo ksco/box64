@@ -475,6 +475,13 @@ uintptr_t dynarec64_F30F_vector(dynarec_rv64_t* dyn, uintptr_t addr, uintptr_t i
         case 0x7E:
             INST_NAME("MOVQ Gx, Ex");
             nextop = F8;
+            if (MODREG && !cpuext.xtheadvector) {
+                gd = ((nextop >> 3) & 7) + (rex.r << 3);
+                ed = (nextop & 7) + (rex.b << 3);
+                simd_copy(dyn, ninst, x1, gd, ed, 8, 0);
+                simd_commit(dyn, ninst, gd, 0, SIMD_HI64);
+                break;
+            }
             SET_ELEMENT_WIDTH(x1, VECTOR_SEW64);
             if (MODREG) {
                 GETEX_vector(v1, 0, 0, VECTOR_SEW64);

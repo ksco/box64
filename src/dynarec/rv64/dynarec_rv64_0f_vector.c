@@ -1270,10 +1270,17 @@ uintptr_t dynarec64_0F_vector(dynarec_rv64_t* dyn, uintptr_t addr, uintptr_t ip,
                 LHU(x4, ed, fixedaddress);
                 ed = x4;
             }
-            VECTOR_LOAD_VMASK((1 << u8), x5);
-            v0 = vpu_get_scratch(dyn);
-            VMERGE_VXM(v0, q0, ed); // uses VMASK
-            VMV_V_V(q0, v0);
+            if (cpuext.xtheadvector) {
+                VECTOR_LOAD_VMASK(1 << u8, x5);
+                v0 = vpu_get_scratch(dyn);
+                VMERGE_VXM(v0, q0, ed);
+                VMV_V_V(q0, v0);
+            } else if (!u8) {
+                VMV_S_X(q0, ed);
+            } else {
+                VECTOR_LOAD_VMASK(1 << u8, x5);
+                VMERGE_VXM(q0, q0, ed);
+            }
             break;
         case 0xC5:
             INST_NAME("PEXTRW Gd, Em, Ib");
