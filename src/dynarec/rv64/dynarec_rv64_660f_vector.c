@@ -566,9 +566,8 @@ uintptr_t dynarec64_660F_vector(dynarec_rv64_t* dyn, uintptr_t addr, uintptr_t i
                     GETEX_vector(q1, 0, 0, u8);
                     GETGX_empty_vector(q0);
                     v0 = vpu_get_scratch(dyn);
-                    VSRA_VI(v0, q1, 0x1F, VECTOR_UNMASKED);
-                    VXOR_VV(q0, v0, q1, VECTOR_UNMASKED);
-                    VSUB_VV(q0, q0, v0, VECTOR_UNMASKED);
+                    VRSUB_VX(v0, q1, xZR, VECTOR_UNMASKED);
+                    VMAX_VV(q0, q1, v0, VECTOR_UNMASKED);
                     break;
                 case 0x20:
                     INST_NAME("PMOVSXBW Gx, Ex");
