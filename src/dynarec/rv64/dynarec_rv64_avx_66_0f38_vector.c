@@ -1570,7 +1570,7 @@ uintptr_t dynarec64_AVX_66_0F38_vector(dynarec_rv64_t* dyn, uintptr_t addr, uint
             nextop = F8;
             GETGDd;
             GETED(0);
-            GETVD;
+            vd = TO_NAT(vex.v);
             SLLxw(gd, ed, vd);
             break;
         case 0x41:

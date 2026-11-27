@@ -175,9 +175,8 @@ uintptr_t dynarec64_AVX_F2_0F38(dynarec_rv64_t* dyn, uintptr_t addr, uintptr_t i
             nextop = F8;
             GETGDd;
             GETED(0);
-            GETVD;
-            ANDI(x5, vd, rex.w ? 0x3f : 0x1f);
-            SRLxw(gd, ed, x5);
+            vd = TO_NAT(vex.v);
+            SRLxw(gd, ed, vd);
             break;
         default:
             DEFAULT;
