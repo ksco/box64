@@ -1952,6 +1952,7 @@ void simd_scalar_arith(dynarec_rv64_t* dyn, int ninst, int s1, int dst, int left
 #define simd_get_reg     STEPNAME(simd_get_reg)
 #define simd_forget_reg  STEPNAME(simd_forget_reg)
 #define simd_set_width   STEPNAME(simd_set_width)
+#define simd_cvtps2dq    STEPNAME(simd_cvtps2dq)
 #define simd_load_reg    STEPNAME(simd_load_reg)
 #define simd_store_reg   STEPNAME(simd_store_reg)
 #define simd_flush_upper STEPNAME(simd_flush_upper)
@@ -2228,6 +2229,7 @@ void simd_reflect_fp_reg(dynarec_rv64_t* dyn, int ninst, int s1, int a);
 
 void simd_sync_upper(dynarec_rv64_t* dyn, int ninst, int s1, int next);
 void simd_set_width(dynarec_rv64_t* dyn, int ninst, int s1, int sew, int width);
+void simd_cvtps2dq(dynarec_rv64_t* dyn, int ninst, int dst, int src, int truncate);
 void simd_load_reg(dynarec_rv64_t* dyn, int ninst, int s1, int vreg, int a, int width, int sew);
 void simd_store_reg(dynarec_rv64_t* dyn, int ninst, int s1, int vreg, int a, int width, int sew);
 

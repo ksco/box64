@@ -1115,6 +1115,61 @@ void simd_set_width(dynarec_rv64_t* dyn, int ninst, int s1, int sew, int width)
     dyn->vector_eew = rvv_set_config(dyn, ninst, s1, sew, VECTOR_LMUL1, width >> sew);
 }
 
+void simd_cvtps2dq(dynarec_rv64_t* dyn, int ninst, int dst, int src, int truncate)
+{
+    int j64;
+    MAYUSE(j64);
+    const int strict = !BOX64ENV(dynarec_fastround);
+    if (strict) FSFLAGSI(0);
+    if (truncate && !cpuext.xtheadvector) {
+        VFCVT_RTZ_X_F_V(dst, src, VECTOR_UNMASKED);
+    } else if (truncate) {
+        ADDI(x4, xZR, RD_RTZ);
+        FSRM(x4, x4);
+        VFCVT_X_F_V(dst, src, VECTOR_UNMASKED);
+        FSRM(xZR, x4);
+    } else {
+        VFCVT_X_F_V(dst, src, VECTOR_UNMASKED);
+    }
+    if (!strict) return;
+
+    if (cpuext.xtheadvector) {
+        MOV32w(x4, 0x7fffffff);
+        VMSEQ_VX(VMASK, dst, x4, VECTOR_UNMASKED);
+        MOV32w(x4, 0x80000000);
+        VMERGE_VXM(dst, dst, x4);
+        FRFLAGS(x5);
+        ANDI(x5, x5, (1 << FR_NV) | (1 << FR_OF));
+        BEQ_MARK(x5, xZR);
+        emit_mxcsr_raise_invalid(x4);
+        MARK;
+        FRFLAGS(x5);
+        ANDI(x5, x5, 1 << FR_NX);
+        BEQ_MARK2(x5, xZR);
+        emit_mxcsr_raise_precision(x4);
+        MARK2;
+        return;
+    }
+
+    FRFLAGS(x5);
+    ANDI(x5, x5, (1 << FR_NV) | (1 << FR_OF) | (1 << FR_NX));
+    BEQ_MARK2(x5, xZR);
+    ANDI(x6, x5, (1 << FR_NV) | (1 << FR_OF));
+    BEQZ_MARK(x6);
+    MOV32w(x4, 0x7fffffff);
+    VMSEQ_VX(VMASK, dst, x4, VECTOR_UNMASKED);
+    VADD_VI(dst, dst, 1, VECTOR_MASKED);
+    MARK;
+    SNEZ(x6, x6);
+    ANDI(x5, x5, 1 << FR_NX);
+    SLLI(x5, x5, 5 - FR_NX);
+    OR(x5, x5, x6);
+    LW(x4, xEmu, offsetof(x64emu_t, mxcsr));
+    OR(x4, x4, x5);
+    SW(x4, xEmu, offsetof(x64emu_t, mxcsr));
+    MARK2;
+}
+
 void simd_load_reg(dynarec_rv64_t* dyn, int ninst, int s1, int vreg, int a, int width, int sew)
 {
     int reg = simd_get(dyn, ninst, s1, a, width, sew, 0);

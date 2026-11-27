@@ -321,31 +321,7 @@ uintptr_t dynarec64_F30F_vector(dynarec_rv64_t* dyn, uintptr_t addr, uintptr_t i
             SET_ELEMENT_WIDTH(x1, VECTOR_SEW32);
             GETEX_vector(v1, 0, 0, VECTOR_SEW32);
             GETGX_empty_vector(v0);
-            if (!BOX64ENV(dynarec_fastround)) FSFLAGSI(0);
-            if (cpuext.xtheadvector) {
-                ADDI(x4, xZR, 1); // RTZ
-                FSRM(x4, x4);
-                VFCVT_X_F_V(v0, v1, VECTOR_UNMASKED);
-                FSRM(xZR, x4);
-            } else {
-                VFCVT_RTZ_X_F_V(v0, v1, VECTOR_UNMASKED);
-            }
-            if (!BOX64ENV(dynarec_fastround)) {
-                MOV32w(x4, 0x7fffffff);
-                VMSEQ_VX(VMASK, v0, x4, VECTOR_UNMASKED);
-                MOV32w(x4, 0x80000000);
-                VMERGE_VXM(v0, v0, x4);
-                FRFLAGS(x5);
-                ANDI(x5, x5, (1 << FR_NV) | (1 << FR_OF));
-                BEQ_MARK(x5, xZR);
-                emit_mxcsr_raise_invalid(x4);
-                MARK;
-                FRFLAGS(x5);
-                ANDI(x5, x5, 1 << FR_NX);
-                BEQ_MARK2(x5, xZR);
-                emit_mxcsr_raise_precision(x4);
-                MARK2;
-            }
+            simd_cvtps2dq(dyn, ninst, v0, v1, 1);
             break;
         case 0x5C:
             INST_NAME("SUBSS Gx, Ex");
