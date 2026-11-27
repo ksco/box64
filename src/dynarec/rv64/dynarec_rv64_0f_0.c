@@ -461,31 +461,7 @@ uintptr_t dynarec64_0F_0(dynarec_rv64_t* dyn, uintptr_t addr, uintptr_t ip, int 
             nextop = F8;
             GETGXSS(d0);
             GETEXSS(v0, 0);
-            CLEAR_FLAGS();
-            // if isnan(d0) || isnan(v0)
-            IFX (X_ZF | X_PF | X_CF) {
-                FEQS(x3, d0, d0);
-                FEQS(x2, v0, v0);
-                AND(x2, x2, x3);
-                BNE_MARK(x2, xZR);
-                ORI(xFlags, xFlags, (1 << F_ZF) | (1 << F_PF) | (1 << F_CF));
-                B_NEXT_nocond;
-            }
-            MARK;
-            // else if isless(d0, v0)
-            IFX (X_CF) {
-                FLTS(x2, d0, v0);
-                BEQ_MARK2(x2, xZR);
-                ORI(xFlags, xFlags, 1 << F_CF);
-                B_NEXT_nocond;
-            }
-            MARK2;
-            // else if d0 == v0
-            IFX (X_ZF) {
-                FEQS(x2, d0, v0);
-                CBZ_NEXT(x2);
-                ORI(xFlags, xFlags, 1 << F_ZF);
-            }
+            emit_comis(dyn, ninst, d0, v0, 0);
             break;
         case 0x31:
             INST_NAME("RDTSC");

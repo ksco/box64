@@ -1793,6 +1793,7 @@
 #define emit_cmp8           STEPNAME(emit_cmp8)
 #define emit_cmp16          STEPNAME(emit_cmp16)
 #define emit_cmp32          STEPNAME(emit_cmp32)
+#define emit_comis          STEPNAME(emit_comis)
 #define emit_cmp8_0         STEPNAME(emit_cmp8_0)
 #define emit_cmp16_0        STEPNAME(emit_cmp16_0)
 #define emit_cmp32_0        STEPNAME(emit_cmp32_0)
@@ -2025,6 +2026,7 @@ void grab_segdata(dynarec_rv64_t* dyn, uintptr_t addr, int ninst, int reg, int s
 void emit_cmp8(dynarec_rv64_t* dyn, int ninst, int s1, int s2, int s3, int s4, int s5, int s6);
 void emit_cmp16(dynarec_rv64_t* dyn, int ninst, int s1, int s2, int s3, int s4, int s5, int s6);
 void emit_cmp32(dynarec_rv64_t* dyn, int ninst, rex_t rex, int s1, int s2, int s3, int s4, int s5, int s6);
+void emit_comis(dynarec_rv64_t* dyn, int ninst, int left, int right, int is_double);
 void emit_cmp8_0(dynarec_rv64_t* dyn, int ninst, int s1, int s3, int s4);
 void emit_cmp16_0(dynarec_rv64_t* dyn, int ninst, int s1, int s3, int s4);
 void emit_cmp32_0(dynarec_rv64_t* dyn, int ninst, rex_t rex, uint8_t nextop, int s1, int s3, int s4, int s5);

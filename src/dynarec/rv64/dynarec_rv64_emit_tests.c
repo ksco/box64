@@ -20,6 +20,85 @@
 #include "dynarec_rv64_functions.h"
 #include "../dynarec_helper.h"
 
+void emit_comis(dynarec_rv64_t* dyn, int ninst, int left, int right, int is_double)
+{
+    CLEAR_FLAGS();
+    unsigned needed = dyn->insts[ninst].x64.gen_flags & (X_CF | X_ZF | X_PF);
+    if (!needed) return;
+
+    if (left == right) {
+        if (is_double) { FEQD(x2, left, left); }
+        else { FEQS(x2, left, left); }
+        unsigned unordered_flags = 0;
+        if (needed & X_CF) unordered_flags |= 1 << F_CF;
+        if (needed & X_PF) unordered_flags |= 1 << F_PF;
+        if (unordered_flags) {
+            ADDI(x2, x2, -1);
+            ANDI(x2, x2, unordered_flags);
+            OR(xFlags, xFlags, x2);
+        }
+        if (needed & X_ZF) { ORI(xFlags, xFlags, 1 << F_ZF); }
+        return;
+    }
+
+    if (cpuext.zfa) {
+        if (is_double) { FLEQD(x2, right, left); }
+        else { FLEQS(x2, right, left); }
+        if (needed & (X_ZF | X_PF)) {
+            if (is_double) { FLEQD(x3, left, right); }
+            else { FLEQS(x3, left, right); }
+        }
+        unsigned invert_flags = 0;
+        if (needed & X_CF) {
+            OR(xFlags, xFlags, x2);
+            invert_flags |= 1 << F_CF;
+        }
+        if (needed & X_ZF) {
+            XOR(x4, x2, x3);
+            SLLI(x4, x4, F_ZF);
+            OR(xFlags, xFlags, x4);
+            invert_flags |= 1 << F_ZF;
+        }
+        if (needed & X_PF) {
+            OR(x4, x2, x3);
+            SLLI(x4, x4, F_PF);
+            OR(xFlags, xFlags, x4);
+            invert_flags |= 1 << F_PF;
+        }
+        XORI(xFlags, xFlags, invert_flags);
+        return;
+    }
+
+    int j64;
+    MAYUSE(j64);
+    if (is_double) {
+        FEQD(x3, left, left);
+        FEQD(x2, right, right);
+    } else {
+        FEQS(x3, left, left);
+        FEQS(x2, right, right);
+    }
+    AND(x2, x2, x3);
+    BNE_MARK(x2, xZR);
+    ORI(xFlags, xFlags, (1 << F_ZF) | (1 << F_PF) | (1 << F_CF));
+    B_NEXT_nocond;
+    MARK;
+    if (needed & X_CF) {
+        if (is_double) { FLTD(x2, left, right); }
+        else { FLTS(x2, left, right); }
+        BEQ_MARK2(x2, xZR);
+        ORI(xFlags, xFlags, 1 << F_CF);
+        B_NEXT_nocond;
+    }
+    MARK2;
+    if (needed & X_ZF) {
+        if (is_double) { FEQD(x2, left, right); }
+        else { FEQS(x2, left, right); }
+        CBZ_NEXT(x2);
+        ORI(xFlags, xFlags, 1 << F_ZF);
+    }
+}
+
 // emit CMP8 instruction, from cmp s1, s2, using s3, s4, s5 and s6 as scratch
 void emit_cmp8(dynarec_rv64_t* dyn, int ninst, int s1, int s2, int s3, int s4, int s5, int s6)
 {

@@ -237,43 +237,24 @@ uintptr_t dynarec64_AVX_0F_vector(dynarec_rv64_t* dyn, uintptr_t addr, uintptr_t
             SET_DFNONE();
             nextop = F8;
             gd = ((nextop & 0x38) >> 3) + (rex.r << 3);
-            q0 = vpu_get_scratch(dyn);
-            simd_load_reg(dyn, ninst, x1, q0, gd, 16, VECTOR_SEW32);
+            q0 = simd_get_reg(dyn, ninst, x1, gd, 0, VECTOR_SEW32);
             d0 = fpu_get_scratch(dyn);
             VFMV_F_S(d0, q0);
-            d1 = fpu_get_scratch(dyn);
             if (MODREG) {
                 ed = (nextop & 7) + (rex.b << 3);
-                q1 = VREG(ed);
-                simd_load_reg(dyn, ninst, x1, q1, ed, 16, VECTOR_SEW32);
-                VFMV_F_S(d1, q1);
+                d1 = d0;
+                if (ed != gd) {
+                    q1 = simd_get_reg(dyn, ninst, x1, ed, 0, VECTOR_SEW32);
+                    d1 = fpu_get_scratch(dyn);
+                    VFMV_F_S(d1, q1);
+                }
             } else {
                 SMREAD();
                 addr = geted(dyn, addr, ninst, nextop, &ed, x3, x2, &fixedaddress, rex, NULL, 0, 0);
+                d1 = fpu_get_scratch(dyn);
                 FLW(d1, ed, fixedaddress);
             }
-            CLEAR_FLAGS();
-            IFX (X_ZF | X_PF | X_CF) {
-                FEQS(x3, d0, d0);
-                FEQS(x2, d1, d1);
-                AND(x2, x2, x3);
-                BNE_MARK(x2, xZR);
-                ORI(xFlags, xFlags, (1 << F_ZF) | (1 << F_PF) | (1 << F_CF));
-                B_NEXT_nocond;
-            }
-            MARK;
-            IFX (X_CF) {
-                FLTS(x2, d0, d1);
-                BEQ_MARK2(x2, xZR);
-                ORI(xFlags, xFlags, 1 << F_CF);
-                B_NEXT_nocond;
-            }
-            MARK2;
-            IFX (X_ZF) {
-                FEQS(x2, d0, d1);
-                CBZ_NEXT(x2);
-                ORI(xFlags, xFlags, 1 << F_ZF);
-            }
+            emit_comis(dyn, ninst, d0, d1, 0);
             break;
         case 0x50:
             INST_NAME("VMOVMSKPS Gd, Ex");
