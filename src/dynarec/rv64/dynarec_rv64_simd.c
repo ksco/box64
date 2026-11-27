@@ -486,58 +486,68 @@ void simd_packed_sqrt(dynarec_rv64_t* dyn, int ninst, int dst, int source, int s
 
 void simd_compare(dynarec_rv64_t* dyn, int ninst, int dst, int left, int right, unsigned predicate)
 {
-    int temp = vpu_get_scratch(dyn);
-    int ordered = vpu_get_scratch(dyn);
-    unsigned p = predicate & 15;
-    if (p == 3 || p == 7 || p == 8 || p == 12) {
-        VMFEQ_VV(ordered, left, left, VECTOR_UNMASKED);
-        VMFEQ_VV(temp, right, right, VECTOR_UNMASKED);
-        VMAND_MM(ordered, ordered, temp);
-    }
-    switch (p) {
+    predicate &= 15;
+    switch (predicate) {
         case 0: VMFEQ_VV(VMASK, left, right, VECTOR_UNMASKED); break;
         case 1: VMFLT_VV(VMASK, left, right, VECTOR_UNMASKED); break;
         case 2: VMFLE_VV(VMASK, left, right, VECTOR_UNMASKED); break;
-        case 3: VMNAND_MM(VMASK, ordered, ordered); break;
-        case 4:
+        case 3:
+        case 8: {
+            VMFNE_VV(VMASK, left, left, VECTOR_UNMASKED);
+            if (left != right) {
+                int right_nan = vpu_get_scratch(dyn);
+                VMFNE_VV(right_nan, right, right, VECTOR_UNMASKED);
+                VMOR_MM(VMASK, VMASK, right_nan);
+                if (predicate == 8) {
+                    VMFEQ_VV(right_nan, left, right, VECTOR_UNMASKED);
+                    VMOR_MM(VMASK, VMASK, right_nan);
+                }
+            } else if (predicate == 8) {
+                VMV_V_I(dst, -1);
+                return;
+            }
+            break;
+        }
+        case 4: VMFNE_VV(VMASK, left, right, VECTOR_UNMASKED); break;
         case 5:
         case 6:
-            if (p == 4) {
-                VMFEQ_VV(temp, left, right, VECTOR_UNMASKED);
-            } else if (p == 5) {
-                VMFLT_VV(temp, left, right, VECTOR_UNMASKED);
-            } else {
-                VMFLE_VV(temp, left, right, VECTOR_UNMASKED);
-            }
-            VMNAND_MM(VMASK, temp, temp);
-            break;
-        case 7: VMAND_MM(VMASK, ordered, ordered); break;
-        case 8:
-            VMFEQ_VV(temp, left, right, VECTOR_UNMASKED);
-            VMNAND_MM(VMASK, ordered, ordered);
-            VMOR_MM(VMASK, VMASK, temp);
-            break;
         case 9:
         case 10:
-            if (p == 9) {
-                VMFLE_VV(temp, right, left, VECTOR_UNMASKED);
+            if (predicate == 5) {
+                VMFLT_VV(VMASK, left, right, VECTOR_UNMASKED);
+            } else if (predicate == 6) {
+                VMFLE_VV(VMASK, left, right, VECTOR_UNMASKED);
+            } else if (predicate == 9) {
+                VMFLE_VV(VMASK, right, left, VECTOR_UNMASKED);
             } else {
-                VMFLT_VV(temp, right, left, VECTOR_UNMASKED);
+                VMFLT_VV(VMASK, right, left, VECTOR_UNMASKED);
             }
-            VMNAND_MM(VMASK, temp, temp);
+            VMV_V_I(dst, -1);
+            VMERGE_VIM(dst, dst, 0);
+            return;
+        case 7:
+        case 12: {
+            VMFEQ_VV(VMASK, left, left, VECTOR_UNMASKED);
+            if (left != right) {
+                int right_ordered = vpu_get_scratch(dyn);
+                VMFEQ_VV(right_ordered, right, right, VECTOR_UNMASKED);
+                VMAND_MM(VMASK, VMASK, right_ordered);
+                if (predicate == 12) {
+                    VMFNE_VV(right_ordered, left, right, VECTOR_UNMASKED);
+                    VMAND_MM(VMASK, VMASK, right_ordered);
+                }
+            } else if (predicate == 12) {
+                VMV_V_I(dst, 0);
+                return;
+            }
             break;
-        case 11: VMXOR_MM(VMASK, VMASK, VMASK); break;
-        case 12:
-            VMFEQ_VV(temp, left, right, VECTOR_UNMASKED);
-            VMNAND_MM(VMASK, temp, temp);
-            VMAND_MM(VMASK, VMASK, ordered);
-            break;
+        }
+        case 11: VMV_V_I(dst, 0); return;
         case 13: VMFLE_VV(VMASK, right, left, VECTOR_UNMASKED); break;
         case 14: VMFLT_VV(VMASK, right, left, VECTOR_UNMASKED); break;
-        case 15: VMXNOR_MM(VMASK, VMASK, VMASK); break;
+        case 15: VMV_V_I(dst, -1); return;
     }
-    VXOR_VV(dst, dst, dst, VECTOR_UNMASKED);
-    VMERGE_VIM(dst, dst, 0x1f);
+    VSBC_VVM(dst, left, left);
 }
 
 void simd_aeskeygenassist(dynarec_rv64_t* dyn, int ninst, int dst, int src, int source_in_scratch, unsigned round_constant)

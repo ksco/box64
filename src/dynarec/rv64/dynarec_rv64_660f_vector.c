@@ -774,9 +774,12 @@ uintptr_t dynarec64_660F_vector(dynarec_rv64_t* dyn, uintptr_t addr, uintptr_t i
                     SET_ELEMENT_WIDTH(x1, VECTOR_SEW64);
                     GETEX_vector(q1, 0, 0, VECTOR_SEW64);
                     GETGX_vector(q0, 1, VECTOR_SEW64);
-                    VMSEQ_VV(VMASK, q0, q1, VECTOR_UNMASKED);
-                    VXOR_VV(q0, q0, q0, VECTOR_UNMASKED);
-                    VMERGE_VIM(q0, q0, 0b11111);
+                    if (q0 == q1) {
+                        VMV_V_I(q0, -1);
+                    } else {
+                        VMSEQ_VV(VMASK, q0, q1, VECTOR_UNMASKED);
+                        VSBC_VVM(q0, q0, q0);
+                    }
                     break;
                 case 0x2A:
                     INST_NAME("MOVNTDQA Gx, Ex");
@@ -2591,9 +2594,12 @@ uintptr_t dynarec64_660F_vector(dynarec_rv64_t* dyn, uintptr_t addr, uintptr_t i
             SET_ELEMENT_WIDTH(x1, u8);
             GETGX_vector(q0, 1, dyn->vector_eew);
             GETEX_vector(q1, 0, 0, dyn->vector_eew);
-            VMSEQ_VV(VMASK, q1, q0, VECTOR_UNMASKED);
-            VXOR_VV(q0, q0, q0, VECTOR_UNMASKED);
-            VMERGE_VIM(q0, q0, 0b11111); // implies vmask and widened it
+            if (q0 == q1) {
+                VMV_V_I(q0, -1);
+            } else {
+                VMSEQ_VV(VMASK, q1, q0, VECTOR_UNMASKED);
+                VSBC_VVM(q0, q0, q0);
+            }
             break;
         case 0x7C:
         case 0x7D: {

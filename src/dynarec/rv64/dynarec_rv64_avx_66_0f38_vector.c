@@ -512,9 +512,12 @@ uintptr_t dynarec64_AVX_66_0F38_vector(dynarec_rv64_t* dyn, uintptr_t addr, uint
             INST_NAME("VPCMPEQQ Gx, Vx, Ex");
             nextop = F8;
             GETGY_empty_VYEY_vector(v0, q0, q1, VECTOR_SEW64);
-            VMSEQ_VV(VMASK, q0, q1, VECTOR_UNMASKED);
-            VXOR_VV(v0, v0, v0, VECTOR_UNMASKED);
-            VMERGE_VIM(v0, v0, 0x1f);
+            if (q0 == q1) {
+                VMV_V_I(v0, -1);
+            } else {
+                VMSEQ_VV(VMASK, q0, q1, VECTOR_UNMASKED);
+                VSBC_VVM(v0, q0, q0);
+            }
             PUTGY_vector(v0, VECTOR_SEW64);
             break;
         case 0x2A:
