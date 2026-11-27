@@ -292,6 +292,30 @@ uintptr_t dynarec64_F30F_vector(dynarec_rv64_t* dyn, uintptr_t addr, uintptr_t i
             if (!BOX64ENV(dynarec_fastnan)) return 0;
             INST_NAME("CVTSS2SD Gx, Ex");
             nextop = F8;
+            if (!cpuext.xtheadvector) {
+                GETG;
+                SET_ELEMENT_WIDTH(x1, VECTOR_SEW32);
+                if (MODREG) {
+                    ed = (nextop & 7) + (rex.b << 3);
+                    v1 = simd_access(dyn, ninst, x1, ed, SIMD_LO32, 0);
+                } else {
+                    SMREAD();
+                    addr = geted(dyn, addr, ninst, nextop, &ed, x2, x3, &fixedaddress, rex, NULL, 0, 0);
+                    v1 = vpu_get_scratch(dyn);
+                    LWU(x4, ed, fixedaddress);
+                    VMV_S_X(v1, x4);
+                }
+                v0 = simd_access(dyn, ninst, x1, gd, SIMD_XMM, 0);
+                /* Widen the scalar into a separate m1 group, then merge only the low double. */
+                rvv_set_config(dyn, ninst, x1, VECTOR_SEW32, VECTOR_LMULF2, 1);
+                VECTOR_LOAD_VMASK(1, x4);
+                d0 = vpu_get_scratch_lmul(dyn, VECTOR_LMUL1);
+                VFWCVT_F_F_V(d0, v1, VECTOR_MASKED);
+                rvv_set_vl_for_width(dyn, ninst, x1, VECTOR_SEW64, VECTOR_LMUL1, 16);
+                VMERGE_VVM(v0, v0, d0);
+                simd_commit(dyn, ninst, gd, SIMD_LO64, 0);
+                break;
+            }
             SET_ELEMENT_WIDTH(x1, VECTOR_SEW32);
             if (MODREG) {
                 GETGX_vector(v0, 1, VECTOR_SEW32);
