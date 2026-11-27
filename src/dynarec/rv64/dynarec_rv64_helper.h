@@ -686,21 +686,6 @@
         }                                                             \
     } while (0)
 
-// Get EY as a vector of w bytes (for instructions whose source operand is narrower than the destination)
-#define GETEY_vector_w(a, D, sew, w)                                                             \
-    do {                                                                                         \
-        if (MODREG) {                                                                            \
-            a = VREG((nextop & 7) + (rex.b << 3));                                               \
-            simd_load_reg(dyn, ninst, x1, a, (nextop & 7) + (rex.b << 3), w, sew);               \
-        } else {                                                                                 \
-            a = vpu_get_scratch(dyn);                                                            \
-            SMREAD();                                                                            \
-            addr = geted(dyn, addr, ninst, nextop, &ed, x3, x2, &fixedaddress, rex, NULL, 0, D); \
-            simd_set_width(dyn, ninst, x1, sew, w);                                              \
-            VLE_V(a, ed, sew, VECTOR_UNMASKED, VECTOR_NFIELD1);                                  \
-        }                                                                                        \
-    } while (0)
-
 #define PUTGY_vector(a, sew) simd_store_reg(dyn, ninst, x1, a, gd, 16 << vex.l, sew)
 
 #define GETEX_PARTIAL_vector(a, w, D, sew, bytes)                                            \

@@ -482,6 +482,12 @@ uintptr_t dynarec64_AVX_66_0F_vector(dynarec_rv64_t* dyn, uintptr_t addr, uintpt
             q0 = simd_access(dyn, ninst, x1, vex.v, regions, 0);
             if (MODREG) {
                 q1 = simd_access(dyn, ninst, x1, (nextop & 7) + (rex.b << 3), regions, 0);
+            } else if (!vex.l && !unsigned_output) {
+                SMREAD();
+                addr = geted(dyn, addr, ninst, nextop, &ed, x3, x2, &fixedaddress, rex, NULL, 0, 0);
+                q1 = vpu_get_scratch(dyn);
+                rvv_set_vl_for_width(dyn, ninst, x1, narrow_sew, VECTOR_LMULF2, 8);
+                VLE_V(q1, ed, wide_sew, VECTOR_UNMASKED, VECTOR_NFIELD1);
             } else {
                 GETEY_vector(q1, 0, wide_sew);
             }
@@ -511,24 +517,34 @@ uintptr_t dynarec64_AVX_66_0F_vector(dynarec_rv64_t* dyn, uintptr_t addr, uintpt
                 MOV64x(x4, lane_indices);
                 VMV_S_X(indices, x4);
                 VRGATHEREI16_VV(v0, packed_left, indices, VECTOR_UNMASKED);
+            } else if (!unsigned_output || q0 == q1) {
+                int clipped = MODREG ? vpu_get_scratch(dyn) : q1;
+                if (unsigned_output) {
+                    SET_AVX_VECTOR_WIDTH(x1, wide_sew);
+                    VMAX_VX(clipped, q1, xZR, VECTOR_UNMASKED);
+                }
+                rvv_set_vl_for_width(dyn, ninst, x1, narrow_sew, VECTOR_LMULF2, 8);
+                if (unsigned_output) {
+                    VNCLIPU_WI(clipped, clipped, 0, VECTOR_UNMASKED);
+                } else {
+                    VNCLIP_WI(clipped, q1, 0, VECTOR_UNMASKED);
+                    if (q0 != q1) VNCLIP_WI(v0, q0, 0, VECTOR_UNMASKED);
+                }
+                SET_AVX_VECTOR_WIDTH(x1, VECTOR_SEW64);
+                if (q0 == q1) {
+                    VRGATHER_VI(v0, clipped, 0, VECTOR_UNMASKED);
+                } else {
+                    VSLIDEUP_VI(v0, clipped, 1, VECTOR_UNMASKED);
+                }
             } else {
                 int joined = vpu_get_scratch_lmul(dyn, VECTOR_LMUL2);
+                int positive_right = vpu_get_scratch(dyn);
                 simd_set_width(dyn, ninst, x1, wide_sew, 32);
-                if (unsigned_output) {
-                    int positive_right = vpu_get_scratch(dyn);
-                    VMAX_VX(joined, q0, xZR, VECTOR_UNMASKED);
-                    VMAX_VX(positive_right, q1, xZR, VECTOR_UNMASKED);
-                    q1 = positive_right;
-                } else {
-                    VMV_V_V(joined, q0);
-                }
-                VSLIDEUP_VI(joined, q1, 16 >> wide_sew, VECTOR_UNMASKED);
+                VMAX_VX(joined, q0, xZR, VECTOR_UNMASKED);
+                VMAX_VX(positive_right, q1, xZR, VECTOR_UNMASKED);
+                VSLIDEUP_VI(joined, positive_right, 16 >> wide_sew, VECTOR_UNMASKED);
                 SET_AVX_VECTOR_WIDTH(x1, narrow_sew);
-                if (unsigned_output) {
-                    VNCLIPU_WI(v0, joined, 0, VECTOR_UNMASKED);
-                } else {
-                    VNCLIP_WI(v0, joined, 0, VECTOR_UNMASKED);
-                }
+                VNCLIPU_WI(v0, joined, 0, VECTOR_UNMASKED);
             }
             PUTGY_vector(v0, narrow_sew);
             break;

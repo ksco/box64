@@ -415,66 +415,76 @@ uintptr_t dynarec64_AVX_66_0F38_vector(dynarec_rv64_t* dyn, uintptr_t addr, uint
             VMAX_VV(v0, q0, v1, VECTOR_UNMASKED);
             PUTGY_vector(v0, VECTOR_SEW32);
             break;
-        case 0x20:
-            INST_NAME("VPMOVSXBW Gx, Ex");
+        case 0x20 ... 0x25:
+        case 0x30 ... 0x35: {
+            int zero_extend = opcode & 0x10;
+            int source_sew, result_sew;
+            switch (opcode & 7) {
+                case 0:
+                    INST_NAME(zero_extend ? "VPMOVZXBW Gx, Ex" : "VPMOVSXBW Gx, Ex");
+                    source_sew = VECTOR_SEW8;
+                    result_sew = VECTOR_SEW16;
+                    break;
+                case 1:
+                    INST_NAME(zero_extend ? "VPMOVZXBD Gx, Ex" : "VPMOVSXBD Gx, Ex");
+                    source_sew = VECTOR_SEW8;
+                    result_sew = VECTOR_SEW32;
+                    break;
+                case 2:
+                    INST_NAME(zero_extend ? "VPMOVZXBQ Gx, Ex" : "VPMOVSXBQ Gx, Ex");
+                    source_sew = VECTOR_SEW8;
+                    result_sew = VECTOR_SEW64;
+                    break;
+                case 3:
+                    INST_NAME(zero_extend ? "VPMOVZXWD Gx, Ex" : "VPMOVSXWD Gx, Ex");
+                    source_sew = VECTOR_SEW16;
+                    result_sew = VECTOR_SEW32;
+                    break;
+                case 4:
+                    INST_NAME(zero_extend ? "VPMOVZXWQ Gx, Ex" : "VPMOVSXWQ Gx, Ex");
+                    source_sew = VECTOR_SEW16;
+                    result_sew = VECTOR_SEW64;
+                    break;
+                case 5:
+                    INST_NAME(zero_extend ? "VPMOVZXDQ Gx, Ex" : "VPMOVSXDQ Gx, Ex");
+                    source_sew = VECTOR_SEW32;
+                    result_sew = VECTOR_SEW64;
+                    break;
+                default: return 0;
+            }
+            unsigned width = 16 << vex.l;
+            int widening = result_sew - source_sew;
             nextop = F8;
-            GETEY_vector_w(q0, 0, VECTOR_SEW8, 8 << vex.l);
+            if (MODREG) {
+                unsigned source_bytes = width >> widening;
+                unsigned regions = source_bytes <= 4 ? SIMD_LO32 : source_bytes == 8 ? SIMD_LO64 : SIMD_XMM;
+                q0 = simd_access(dyn, ninst, x1, (nextop & 7) + (rex.b << 3), regions, 0);
+            } else {
+                SMREAD();
+                addr = geted(dyn, addr, ninst, nextop, &ed, x3, x2, &fixedaddress, rex, NULL, 0, 0);
+                q0 = vpu_get_scratch(dyn);
+            }
+            simd_set_width(dyn, ninst, x1, result_sew, width);
+            if (!MODREG) VLE_V(q0, ed, source_sew, VECTOR_UNMASKED, VECTOR_NFIELD1);
             GETGY_empty_vector(v0);
             VEC_SRC_KEEP(q0, v0);
-            simd_set_width(dyn, ninst, x1, VECTOR_SEW16, 16 << vex.l);
-            VSEXT_VF2(v0, q0, VECTOR_UNMASKED);
-            PUTGY_vector(v0, VECTOR_SEW16);
+            switch (widening) {
+                case 1:
+                    if (zero_extend) VZEXT_VF2(v0, q0, VECTOR_UNMASKED);
+                    else VSEXT_VF2(v0, q0, VECTOR_UNMASKED);
+                    break;
+                case 2:
+                    if (zero_extend) VZEXT_VF4(v0, q0, VECTOR_UNMASKED);
+                    else VSEXT_VF4(v0, q0, VECTOR_UNMASKED);
+                    break;
+                case 3:
+                    if (zero_extend) VZEXT_VF8(v0, q0, VECTOR_UNMASKED);
+                    else VSEXT_VF8(v0, q0, VECTOR_UNMASKED);
+                    break;
+            }
+            PUTGY_vector(v0, result_sew);
             break;
-        case 0x21:
-            INST_NAME("VPMOVSXBD Gx, Ex");
-            nextop = F8;
-            GETEY_vector_w(q0, 0, VECTOR_SEW8, 4 << vex.l);
-            GETGY_empty_vector(v0);
-            VEC_SRC_KEEP(q0, v0);
-            simd_set_width(dyn, ninst, x1, VECTOR_SEW32, 16 << vex.l);
-            VSEXT_VF4(v0, q0, VECTOR_UNMASKED);
-            PUTGY_vector(v0, VECTOR_SEW32);
-            break;
-        case 0x22:
-            INST_NAME("VPMOVSXBQ Gx, Ex");
-            nextop = F8;
-            GETEY_vector_w(q0, 0, VECTOR_SEW8, 2 << vex.l);
-            GETGY_empty_vector(v0);
-            VEC_SRC_KEEP(q0, v0);
-            simd_set_width(dyn, ninst, x1, VECTOR_SEW64, 16 << vex.l);
-            VSEXT_VF8(v0, q0, VECTOR_UNMASKED);
-            PUTGY_vector(v0, VECTOR_SEW64);
-            break;
-        case 0x23:
-            INST_NAME("VPMOVSXWD Gx, Ex");
-            nextop = F8;
-            GETEY_vector_w(q0, 0, VECTOR_SEW16, 8 << vex.l);
-            GETGY_empty_vector(v0);
-            VEC_SRC_KEEP(q0, v0);
-            simd_set_width(dyn, ninst, x1, VECTOR_SEW32, 16 << vex.l);
-            VSEXT_VF2(v0, q0, VECTOR_UNMASKED);
-            PUTGY_vector(v0, VECTOR_SEW32);
-            break;
-        case 0x24:
-            INST_NAME("VPMOVSXWQ Gx, Ex");
-            nextop = F8;
-            GETEY_vector_w(q0, 0, VECTOR_SEW16, 4 << vex.l);
-            GETGY_empty_vector(v0);
-            VEC_SRC_KEEP(q0, v0);
-            simd_set_width(dyn, ninst, x1, VECTOR_SEW64, 16 << vex.l);
-            VSEXT_VF4(v0, q0, VECTOR_UNMASKED);
-            PUTGY_vector(v0, VECTOR_SEW64);
-            break;
-        case 0x25:
-            INST_NAME("VPMOVSXDQ Gx, Ex");
-            nextop = F8;
-            GETEY_vector_w(q0, 0, VECTOR_SEW32, 8 << vex.l);
-            GETGY_empty_vector(v0);
-            VEC_SRC_KEEP(q0, v0);
-            simd_set_width(dyn, ninst, x1, VECTOR_SEW64, 16 << vex.l);
-            VSEXT_VF2(v0, q0, VECTOR_UNMASKED);
-            PUTGY_vector(v0, VECTOR_SEW64);
-            break;
+        }
         case 0x28: {
             INST_NAME("VPMULDQ Gx, Vx, Ex");
             nextop = F8;
@@ -626,66 +636,6 @@ uintptr_t dynarec64_AVX_66_0F38_vector(dynarec_rv64_t* dyn, uintptr_t addr, uint
             VMSLT_VX(VMASK, q0, xZR, VECTOR_UNMASKED);
             VSE64_V(q1, ed, VECTOR_MASKED, VECTOR_NFIELD1);
             SMWRITE2();
-            break;
-        case 0x30:
-            INST_NAME("VPMOVZXBW Gx, Ex");
-            nextop = F8;
-            GETEY_vector_w(q0, 0, VECTOR_SEW8, 8 << vex.l);
-            GETGY_empty_vector(v0);
-            VEC_SRC_KEEP(q0, v0);
-            simd_set_width(dyn, ninst, x1, VECTOR_SEW16, 16 << vex.l);
-            VZEXT_VF2(v0, q0, VECTOR_UNMASKED);
-            PUTGY_vector(v0, VECTOR_SEW16);
-            break;
-        case 0x31:
-            INST_NAME("VPMOVZXBD Gx, Ex");
-            nextop = F8;
-            GETEY_vector_w(q0, 0, VECTOR_SEW8, 4 << vex.l);
-            GETGY_empty_vector(v0);
-            VEC_SRC_KEEP(q0, v0);
-            simd_set_width(dyn, ninst, x1, VECTOR_SEW32, 16 << vex.l);
-            VZEXT_VF4(v0, q0, VECTOR_UNMASKED);
-            PUTGY_vector(v0, VECTOR_SEW32);
-            break;
-        case 0x32:
-            INST_NAME("VPMOVZXBQ Gx, Ex");
-            nextop = F8;
-            GETEY_vector_w(q0, 0, VECTOR_SEW8, 2 << vex.l);
-            GETGY_empty_vector(v0);
-            VEC_SRC_KEEP(q0, v0);
-            simd_set_width(dyn, ninst, x1, VECTOR_SEW64, 16 << vex.l);
-            VZEXT_VF8(v0, q0, VECTOR_UNMASKED);
-            PUTGY_vector(v0, VECTOR_SEW64);
-            break;
-        case 0x33:
-            INST_NAME("VPMOVZXWD Gx, Ex");
-            nextop = F8;
-            GETEY_vector_w(q0, 0, VECTOR_SEW16, 8 << vex.l);
-            GETGY_empty_vector(v0);
-            VEC_SRC_KEEP(q0, v0);
-            simd_set_width(dyn, ninst, x1, VECTOR_SEW32, 16 << vex.l);
-            VZEXT_VF2(v0, q0, VECTOR_UNMASKED);
-            PUTGY_vector(v0, VECTOR_SEW32);
-            break;
-        case 0x34:
-            INST_NAME("VPMOVZXWQ Gx, Ex");
-            nextop = F8;
-            GETEY_vector_w(q0, 0, VECTOR_SEW16, 4 << vex.l);
-            GETGY_empty_vector(v0);
-            VEC_SRC_KEEP(q0, v0);
-            simd_set_width(dyn, ninst, x1, VECTOR_SEW64, 16 << vex.l);
-            VZEXT_VF4(v0, q0, VECTOR_UNMASKED);
-            PUTGY_vector(v0, VECTOR_SEW64);
-            break;
-        case 0x35:
-            INST_NAME("VPMOVZXDQ Gx, Ex");
-            nextop = F8;
-            GETEY_vector_w(q0, 0, VECTOR_SEW32, 8 << vex.l);
-            GETGY_empty_vector(v0);
-            VEC_SRC_KEEP(q0, v0);
-            simd_set_width(dyn, ninst, x1, VECTOR_SEW64, 16 << vex.l);
-            VZEXT_VF2(v0, q0, VECTOR_UNMASKED);
-            PUTGY_vector(v0, VECTOR_SEW64);
             break;
         case 0x36:
             if (!vex.l) return 0;
