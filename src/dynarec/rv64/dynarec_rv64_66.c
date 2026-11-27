@@ -1229,10 +1229,12 @@ uintptr_t dynarec64_66(dynarec_rv64_t* dyn, uintptr_t addr, uintptr_t ip, int ni
                     break;
                 case 2:
                     INST_NAME("RCL Ew, Ib");
-                    if (geted_ib(dyn, addr, ninst, nextop) & 0x1f) {
-                        READFLAGS(X_CF);
-                        // removed PENDING on purpose
-                        SETFLAGS(X_OF | X_CF, SF_SUBSET, NAT_FLAGS_FUSION);
+                    u8 = geted_ib(dyn, addr, ninst, nextop) & 0x1f;
+                    if (u8) {
+                        if (u8 % 17) {
+                            READFLAGS(X_CF);
+                            SETFLAGS(X_OF | X_CF, SF_SUBSET, NAT_FLAGS_FUSION);
+                        }
                         GETEW(x1, 1);
                         u8 = (F8) & 0x1f;
                         emit_rcl16c(dyn, ninst, ed, u8, x4, x5);
@@ -1244,10 +1246,12 @@ uintptr_t dynarec64_66(dynarec_rv64_t* dyn, uintptr_t addr, uintptr_t ip, int ni
                     break;
                 case 3:
                     INST_NAME("RCR Ew, Ib");
-                    if (geted_ib(dyn, addr, ninst, nextop) & 0x1f) {
-                        READFLAGS(X_CF);
-                        // removed PENDING on purpose
-                        SETFLAGS(X_OF | X_CF, SF_SUBSET, NAT_FLAGS_FUSION);
+                    u8 = geted_ib(dyn, addr, ninst, nextop) & 0x1f;
+                    if (u8) {
+                        if (u8 % 17) {
+                            READFLAGS(X_CF);
+                            SETFLAGS(X_OF | X_CF, SF_SUBSET, NAT_FLAGS_FUSION);
+                        }
                         GETEW(x1, 1);
                         u8 = (F8) & 0x1f;
                         emit_rcr16c(dyn, ninst, ed, u8, x4, x5);

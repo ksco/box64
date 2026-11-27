@@ -1564,71 +1564,75 @@ void emit_rcr32c(dynarec_rv64_t* dyn, int ninst, rex_t rex, int s1, uint32_t c, 
     if (dyn->insts[ninst].nat_flags_fusion) NAT_FLAGS_OPS(s1, xZR, s3, xZR);
 }
 
-// emit RCL32 instruction, from s1, count in s2 (masked to 0x1f, non-zero), store result in s1 using s3, s4 and s5 as scratch
+// emit RCL32/64 instruction, from s1, nonzero masked count in s2, store result in s1 using s3, s4 and s5 as scratch
 void emit_rcl32(dynarec_rv64_t* dyn, int ninst, rex_t rex, int s1, int s2, int s3, int s4, int s5)
 {
-    int64_t j64;
     SET_DFNONE();
-    UP32_WRITE32(s1); if (!rex.w) ZEROUP_RESULT(s1);
+    if (!rex.w) ZEROUP_RESULT(s1);
 
     IFX (X_OF) {
         ANDI(xFlags, xFlags, ~(1UL << F_OF2));
-        SRLIxw(s3, s1, rex.w ? 62 : 30);
+        SRLIxw(s3, s1, (rex.w ? 62 : 30) - F_OF2);
         SRLI(s4, s3, 1);
         XOR(s3, s3, s4);
-        ANDI(s3, s3, 1);
-        SLLI(s3, s3, F_OF2);
+        ANDI(s3, s3, 1 << F_OF2);
         OR(xFlags, xFlags, s3);
     }
 
     ANDI(s3, xFlags, 1 << F_CF);
+    if (rex.w) NEG(s4, s2);
     IFX (X_CF) {
+        const int carry = rex.w ? s5 : s4;
         ANDI(xFlags, xFlags, ~(1UL << F_CF));
-        ADDI(s4, xZR, rex.w ? 64 : 32);
-        SUB(s4, s4, s2);
-        if (cpuext.zbs) {
-            BEXT_(s4, s1, s4);
-        } else {
-            SRL(s4, s1, s4);
-            ANDI(s4, s4, 1);
+        if (!rex.w) {
+            ADDI(s4, xZR, 32);
+            SUB(s4, s4, s2);
         }
-        OR(xFlags, xFlags, s4);
+        if (cpuext.zbs) {
+            BEXT_(carry, s1, s4);
+        } else {
+            SRL(carry, s1, s4);
+            ANDI(carry, carry, 1);
+        }
+        OR(xFlags, xFlags, carry);
     }
 
-    SLL(s4, s1, s2);
-    ADDI(s5, s2, -1);
-    SLL(s5, s3, s5);
-    OR(s4, s4, s5);
     if (rex.w) {
+        ADDSL(s3, s3, s1, 1, s5);
         ADDI(s5, s2, -1);
-        BEQZ(s5, 4 * 4);
+        SRLI(s1, s1, 1);
+        SLL(s3, s3, s5);
+        SRL(s1, s1, s4);
+        OR(s1, s1, s3);
+    } else {
+        SLL(s4, s1, s2);
+        ADDI(s5, s2, -1);
+        SLL(s5, s3, s5);
+        OR(s4, s4, s5);
+        ADDI(s5, xZR, 33);
+        SUB(s5, s5, s2);
+        SRL(s5, s1, s5);
+        OR(s1, s4, s5);
     }
-    ADDI(s5, xZR, rex.w ? 65 : 33);
-    SUB(s5, s5, s2);
-    SRL(s5, s1, s5);
-    OR(s4, s4, s5);
-    MV(s1, s4);
     UP32_WRITE32(s1); if (!rex.w && NEED_ZEROUP32(s1)) ZEROUP_RESULT(s1);
     if (dyn->insts[ninst].nat_flags_fusion) NAT_FLAGS_OPS(s1, xZR, s3, xZR);
 }
 
-// emit RCR32 instruction, from s1, count in s2 (masked to 0x1f, non-zero), store result in s1 using s3, s4 and s5 as scratch
+// emit RCR32/64 instruction, from s1, nonzero masked count in s2, store result in s1 using s3, s4 and s5 as scratch
 void emit_rcr32(dynarec_rv64_t* dyn, int ninst, rex_t rex, int s1, int s2, int s3, int s4, int s5)
 {
-    int64_t j64;
     SET_DFNONE();
-    UP32_WRITE32(s1); if (!rex.w) ZEROUP_RESULT(s1);
-
-    IFX (X_OF) {
-        ANDI(xFlags, xFlags, ~(1UL << F_OF2));
-        SRLIxw(s3, s1, rex.w ? 63 : 31);
-        XOR(s3, s3, xFlags);
-        ANDI(s3, s3, 1);
-        SLLI(s3, s3, F_OF2);
-        OR(xFlags, xFlags, s3);
-    }
 
     ANDI(s3, xFlags, 1 << F_CF);
+    IFX (X_OF) {
+        SRLIxw(s4, s1, rex.w ? 63 : 31);
+        XOR(s4, s4, xFlags);
+        ANDI(s4, s4, 1);
+        SLLI(s4, s4, F_OF2);
+        ANDI(xFlags, xFlags, ~(1UL << F_OF2));
+        OR(xFlags, xFlags, s4);
+    }
+
     IFX (X_CF) {
         ANDI(xFlags, xFlags, ~(1UL << F_CF));
         ADDI(s5, s2, -1);
@@ -1641,20 +1645,18 @@ void emit_rcr32(dynarec_rv64_t* dyn, int ninst, rex_t rex, int s1, int s2, int s
         OR(xFlags, xFlags, s5);
     }
 
-    SRL(s4, s1, s2);
-    ADDI(s5, xZR, rex.w ? 64 : 32);
-    SUB(s5, s5, s2);
-    SLL(s5, s3, s5);
-    OR(s4, s4, s5);
-    if (rex.w) {
-        ADDI(s5, s2, -1);
-        BEQZ(s5, 4 * 4);
+    if (cpuext.zba) {
+        SHxADD(s3, s1, 1, s3);
+    } else if (cpuext.xtheadba) {
+        TH_ADDSL(s3, s3, s1, 1);
+    } else {
+        SLLI(s4, s1, 1);
+        OR(s3, s4, s3);
     }
-    ADDI(s5, xZR, rex.w ? 65 : 33);
-    SUB(s5, s5, s2);
-    SLL(s5, s1, s5);
-    OR(s4, s4, s5);
-    MV(s1, s4);
+    NEG(s5, s2);
+    SRLxw(s1, s1, s2);
+    SLLxw(s3, s3, s5);
+    OR(s1, s1, s3);
     UP32_WRITE32(s1); if (!rex.w && NEED_ZEROUP32(s1)) ZEROUP_RESULT(s1);
     if (dyn->insts[ninst].nat_flags_fusion) NAT_FLAGS_OPS(s1, xZR, s3, xZR);
 }

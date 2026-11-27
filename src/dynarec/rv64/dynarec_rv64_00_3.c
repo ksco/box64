@@ -99,8 +99,10 @@ uintptr_t dynarec64_00_3(dynarec_rv64_t* dyn, uintptr_t addr, uintptr_t ip, int 
                     INST_NAME("RCL Eb, Ib");
                     u8 = geted_ib(dyn, addr, ninst, nextop) & 0x1f;
                     if (u8) {
-                        READFLAGS(X_CF);
-                        SETFLAGS(X_OF | X_CF, SF_SUBSET, NAT_FLAGS_FUSION);
+                        if (u8 % 9) {
+                            READFLAGS(X_CF);
+                            SETFLAGS(X_OF | X_CF, SF_SUBSET, NAT_FLAGS_FUSION);
+                        }
                         GETEB(x1, 1);
                         u8 = (F8) & 0x1f;
                         emit_rcl8c(dyn, ninst, ed, u8, x4, x5);
@@ -114,8 +116,10 @@ uintptr_t dynarec64_00_3(dynarec_rv64_t* dyn, uintptr_t addr, uintptr_t ip, int 
                     INST_NAME("RCR Eb, Ib");
                     u8 = geted_ib(dyn, addr, ninst, nextop) & 0x1f;
                     if (u8) {
-                        READFLAGS(X_CF);
-                        SETFLAGS(X_OF | X_CF, SF_SUBSET, NAT_FLAGS_FUSION);
+                        if (u8 % 9) {
+                            READFLAGS(X_CF);
+                            SETFLAGS(X_OF | X_CF, SF_SUBSET, NAT_FLAGS_FUSION);
+                        }
                         GETEB(x1, 1);
                         u8 = (F8) & 0x1f;
                         emit_rcr8c(dyn, ninst, ed, u8, x4, x5);
