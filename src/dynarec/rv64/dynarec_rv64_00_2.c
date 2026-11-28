@@ -636,9 +636,11 @@ uintptr_t dynarec64_00_2(dynarec_rv64_t* dyn, uintptr_t addr, uintptr_t ip, int 
             if (rex.w) {
                 SRAI(xRDX, xRAX, 63);
             } else {
-                SLLI(xRDX, xRAX, 32);
-                SRAI(xRDX, xRDX, 63);
-                if (NEED_ZEROUP(xRDX)) ZEROUP_RESULT(xRDX);
+                SRAIW(xRDX, xRAX, 31);
+                if (NEED_ZEROUP(xRDX)) {
+                    SRLI(xRDX, xRDX, 32);
+                    UP32_ZERO(xRDX);
+                }
             }
             break;
         case 0x9B:
