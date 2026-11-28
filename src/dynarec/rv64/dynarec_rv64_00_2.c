@@ -1125,30 +1125,62 @@ uintptr_t dynarec64_00_2(dynarec_rv64_t* dyn, uintptr_t addr, uintptr_t ip, int 
             break;
         case 0xAC:
             UP32_READ(xRSI);
+            UP32_READ(xRAX);
             if (rex.rep) {
+                const int load_words = !rex.is32bits && !rex.is67;
                 INST_NAME("REP LODSB");
                 UP32_READ(xRCX);
                 CBZ_NEXT(xRCX);
                 if (rex.is67 && !rex.is32bits) {
                     ZEROUP(xRSI);
                 }
+                ANDI(x4, xRAX, ~0xff);
                 ANDI(x1, xFlags, 1 << F_DF);
+                if (load_words) {
+                    ADDI(x3, xZR, 16);
+                }
                 BNEZ_MARK2(x1);
+                if (load_words) {
+                    Bxx_gen(GEU, MARK3, xRCX, x3);
+                }
                 MARK; // Part with DF==0
                 LBU(x2, xRSI, 0);
-                ANDI(xRAX, xRAX, ~0xff);
-                OR(xRAX, xRAX, x2);
+                OR(xRAX, x4, x2);
                 ADDI(xRSI, xRSI, 1);
                 SUBI(xRCX, xRCX, 1);
                 BNEZ_MARK(xRCX);
                 B_MARKLOCK_nocond;
                 MARK2; // Part with DF==1
+                MARKSEG;
                 LBU(x2, xRSI, 0);
-                ANDI(xRAX, xRAX, ~0xff);
-                OR(xRAX, xRAX, x2);
+                OR(xRAX, x4, x2);
                 SUBI(xRSI, xRSI, 1);
                 SUBI(xRCX, xRCX, 1);
-                BNEZ_MARK2(xRCX);
+                Bxx_gen(NE, MARKSEG, xRCX, xZR);
+                B_MARKLOCK_nocond;
+                if (load_words) {
+                    MARK3;
+                    NEG(x5, xRSI);
+                    ANDI(x5, x5, 7);
+                    for (int byte = 0; byte < 7; ++byte) {
+                        Bxx_gen(EQ, MARKLOCK2, x5, xZR);
+                        LBU(x1, xRSI, 0);
+                        OR(xRAX, x4, x1);
+                        ADDI(xRSI, xRSI, 1);
+                        SUBI(xRCX, xRCX, 1);
+                        SUBI(x5, x5, 1);
+                    }
+                    MARKLOCK2;
+                    ADDI(x3, xZR, 8);
+                    LD(x2, xRSI, 0);
+                    SRLI(x2, x2, 56);
+                    OR(xRAX, x4, x2);
+                    ADDI(xRSI, xRSI, 8);
+                    SUBI(xRCX, xRCX, 8);
+                    Bxx_gen(GEU, MARKLOCK2, xRCX, x3);
+                    BNEZ_MARK(xRCX);
+                    B_MARKLOCK_nocond;
+                }
                 MARKLOCK;
             } else {
                 INST_NAME("LODSB");
