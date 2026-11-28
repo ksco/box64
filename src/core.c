@@ -213,7 +213,7 @@ void computeRDTSC()
     printf_log_prefix(0, LOG_INFO, "\n");
 }
 
-static void SetYmmMode(void)
+void SetYmmMode(void)
 {
     #ifdef ARM64
     printf_log(LOG_DEBUG, "Using separate xmm/ymm registers\n");

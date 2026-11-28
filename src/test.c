@@ -577,6 +577,8 @@ static int runSingleTest(const char* filepath, const char* include_path)
     }
 #endif
 
+    SetYmmMode();
+
     if (!box64env.is_cputype_overridden && cputype) SET_BOX64ENV(cputype, cputype);
 
     PrintEnvVariables(&box64env, LOG_INFO);

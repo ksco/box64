@@ -13,4 +13,6 @@ int emulate(x64emu_t* emu, elfheader_t* elf_header);
 
 int unittest(int argc, const char** argv);
 
+void SetYmmMode(void);
+
 #endif // __CORE_H
