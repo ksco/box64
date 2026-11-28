@@ -182,6 +182,10 @@ uintptr_t dynarec64_00_0(dynarec_rv64_t* dyn, uintptr_t addr, uintptr_t ip, int 
             INST_NAME("OR AL, Ib");
             SETFLAGS(X_ALL, SF_SET_PENDING, NAT_FLAGS_FUSION);
             u8 = F8;
+            if (!dyn->insts[ninst].x64.gen_flags && !dyn->insts[ninst].nat_flags_fusion) {
+                if (u8) { ORI(xRAX, xRAX, u8); }
+                break;
+            }
             ANDI(x1, xRAX, 0xff);
             emit_or8c(dyn, ninst, x1, u8, x3, x4, x5);
             ANDI(xRAX, xRAX, ~0xff);
@@ -494,6 +498,10 @@ uintptr_t dynarec64_00_0(dynarec_rv64_t* dyn, uintptr_t addr, uintptr_t ip, int 
             INST_NAME("AND AL, Ib");
             SETFLAGS(X_ALL, SF_SET_PENDING, NAT_FLAGS_FUSION);
             u8 = F8;
+            if (!dyn->insts[ninst].x64.gen_flags && !dyn->insts[ninst].nat_flags_fusion) {
+                if (u8 != 0xff) { ANDI(xRAX, xRAX, ~0xff | u8); }
+                break;
+            }
             ANDI(x1, xRAX, 0xff);
             emit_and8c(dyn, ninst, x1, u8, x3, x4);
             ANDI(xRAX, xRAX, ~0xff);
@@ -605,6 +613,10 @@ uintptr_t dynarec64_00_0(dynarec_rv64_t* dyn, uintptr_t addr, uintptr_t ip, int 
             INST_NAME("XOR AL, Ib");
             SETFLAGS(X_ALL, SF_SET_PENDING, NAT_FLAGS_FUSION);
             u8 = F8;
+            if (!dyn->insts[ninst].x64.gen_flags && !dyn->insts[ninst].nat_flags_fusion) {
+                if (u8) { XORI(xRAX, xRAX, u8); }
+                break;
+            }
             ANDI(x1, xRAX, 0xff);
             emit_xor8c(dyn, ninst, x1, u8, x3, x4);
             ANDI(xRAX, xRAX, ~0xff);

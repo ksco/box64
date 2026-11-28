@@ -63,6 +63,19 @@ uintptr_t dynarec64_00_2(dynarec_rv64_t* dyn, uintptr_t addr, uintptr_t ip, int 
                 case 1: // OR
                     INST_NAME("OR Eb, Ib");
                     SETFLAGS(X_ALL, SF_SET_PENDING, NAT_FLAGS_FUSION);
+                    if (MODREG && !dyn->insts[ninst].x64.gen_flags && !dyn->insts[ninst].nat_flags_fusion) {
+                        const int reg_index = (nextop & 7) + (rex.b << 3);
+                        const int high_byte = !rex.rex && reg_index >= 4;
+                        const int target = TO_NAT(high_byte ? reg_index - 4 : reg_index);
+                        const int32_t mask = F8 << (high_byte ? 8 : 0);
+                        if (mask && mask <= 2047) {
+                            ORI(target, target, mask);
+                        } else if (mask) {
+                            MOV32w(x2, mask);
+                            OR(target, target, x2);
+                        }
+                        break;
+                    }
                     GETEB(x1, 1);
                     u8 = F8;
                     emit_or8c(dyn, ninst, x1, u8, x2, x4, x5);
@@ -89,6 +102,20 @@ uintptr_t dynarec64_00_2(dynarec_rv64_t* dyn, uintptr_t addr, uintptr_t ip, int 
                 case 4: // AND
                     INST_NAME("AND Eb, Ib");
                     SETFLAGS(X_ALL, SF_SET_PENDING, NAT_FLAGS_FUSION);
+                    if (MODREG && !dyn->insts[ninst].x64.gen_flags && !dyn->insts[ninst].nat_flags_fusion) {
+                        const int reg_index = (nextop & 7) + (rex.b << 3);
+                        const int high_byte = !rex.rex && reg_index >= 4;
+                        const int target = TO_NAT(high_byte ? reg_index - 4 : reg_index);
+                        const int shift = high_byte ? 8 : 0;
+                        const int32_t mask = ~(0xff << shift) | (F8 << shift);
+                        if (mask != -1 && mask >= -2048) {
+                            ANDI(target, target, mask);
+                        } else if (mask != -1) {
+                            MOV64x(x2, (int64_t)mask);
+                            AND(target, target, x2);
+                        }
+                        break;
+                    }
                     GETEB(x1, 1);
                     u8 = F8;
                     emit_and8c(dyn, ninst, x1, u8, x2, x4);
@@ -105,6 +132,19 @@ uintptr_t dynarec64_00_2(dynarec_rv64_t* dyn, uintptr_t addr, uintptr_t ip, int 
                 case 6: // XOR
                     INST_NAME("XOR Eb, Ib");
                     SETFLAGS(X_ALL, SF_SET_PENDING, NAT_FLAGS_FUSION);
+                    if (MODREG && !dyn->insts[ninst].x64.gen_flags && !dyn->insts[ninst].nat_flags_fusion) {
+                        const int reg_index = (nextop & 7) + (rex.b << 3);
+                        const int high_byte = !rex.rex && reg_index >= 4;
+                        const int target = TO_NAT(high_byte ? reg_index - 4 : reg_index);
+                        const int32_t mask = F8 << (high_byte ? 8 : 0);
+                        if (mask && mask <= 2047) {
+                            XORI(target, target, mask);
+                        } else if (mask) {
+                            MOV32w(x2, mask);
+                            XOR(target, target, x2);
+                        }
+                        break;
+                    }
                     GETEB(x1, 1);
                     u8 = F8;
                     emit_xor8c(dyn, ninst, x1, u8, x2, x4);

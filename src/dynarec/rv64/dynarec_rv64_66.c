@@ -111,6 +111,15 @@ uintptr_t dynarec64_66(dynarec_rv64_t* dyn, uintptr_t addr, uintptr_t ip, int ni
             INST_NAME("OR AX, Iw");
             SETFLAGS(X_ALL, SF_SET_PENDING, NAT_FLAGS_FUSION);
             i32 = F16;
+            if (!dyn->insts[ninst].x64.gen_flags && !dyn->insts[ninst].nat_flags_fusion) {
+                if (i32 && i32 <= 2047) {
+                    ORI(xRAX, xRAX, i32);
+                } else if (i32) {
+                    MOV32w(x2, i32);
+                    OR(xRAX, xRAX, x2);
+                }
+                break;
+            }
             ZEXTH(x1, xRAX);
             MOV32w(x2, i32);
             emit_or16(dyn, ninst, x1, x2, x3, x4);
@@ -244,6 +253,16 @@ uintptr_t dynarec64_66(dynarec_rv64_t* dyn, uintptr_t addr, uintptr_t ip, int ni
             INST_NAME("AND AX, Iw");
             SETFLAGS(X_ALL, SF_SET_PENDING, NAT_FLAGS_FUSION);
             i32 = F16;
+            if (!dyn->insts[ninst].x64.gen_flags && !dyn->insts[ninst].nat_flags_fusion) {
+                const int32_t mask = ~0xffff | i32;
+                if (mask != -1 && mask >= -2048) {
+                    ANDI(xRAX, xRAX, mask);
+                } else if (mask != -1) {
+                    MOV64x(x2, mask);
+                    AND(xRAX, xRAX, x2);
+                }
+                break;
+            }
             ZEXTH(x1, xRAX);
             MOV32w(x2, i32);
             emit_and16(dyn, ninst, x1, x2, x3, x4);
@@ -320,6 +339,15 @@ uintptr_t dynarec64_66(dynarec_rv64_t* dyn, uintptr_t addr, uintptr_t ip, int ni
             INST_NAME("XOR AX, Iw");
             SETFLAGS(X_ALL, SF_SET_PENDING, NAT_FLAGS_FUSION);
             i32 = F16;
+            if (!dyn->insts[ninst].x64.gen_flags && !dyn->insts[ninst].nat_flags_fusion) {
+                if (i32 && i32 <= 2047) {
+                    XORI(xRAX, xRAX, i32);
+                } else if (i32) {
+                    MOV32w(x2, i32);
+                    XOR(xRAX, xRAX, x2);
+                }
+                break;
+            }
             ZEXTH(x1, xRAX);
             MOV32w(x2, i32);
             emit_xor16(dyn, ninst, x1, x2, x3, x4, x5);
@@ -549,6 +577,17 @@ uintptr_t dynarec64_66(dynarec_rv64_t* dyn, uintptr_t addr, uintptr_t ip, int ni
                         INST_NAME("OR Ew, Ib");
                     }
                     SETFLAGS(X_ALL, SF_SET_PENDING, NAT_FLAGS_FUSION);
+                    if (MODREG && !dyn->insts[ninst].x64.gen_flags && !dyn->insts[ninst].nat_flags_fusion) {
+                        const int target = TO_NAT((nextop & 7) + (rex.b << 3));
+                        const uint16_t mask = opcode == 0x81 ? F16 : (uint16_t)(int16_t)F8S;
+                        if (mask && mask <= 2047) {
+                            ORI(target, target, mask);
+                        } else if (mask) {
+                            MOV32w(x2, mask);
+                            OR(target, target, x2);
+                        }
+                        break;
+                    }
                     GETEW(x1, (opcode == 0x81) ? 2 : 1);
                     if (opcode == 0x81)
                         u64 = F16;
@@ -599,6 +638,18 @@ uintptr_t dynarec64_66(dynarec_rv64_t* dyn, uintptr_t addr, uintptr_t ip, int ni
                         INST_NAME("AND Ew, Ib");
                     }
                     SETFLAGS(X_ALL, SF_SET_PENDING, NAT_FLAGS_FUSION);
+                    if (MODREG && !dyn->insts[ninst].x64.gen_flags && !dyn->insts[ninst].nat_flags_fusion) {
+                        const int target = TO_NAT((nextop & 7) + (rex.b << 3));
+                        const uint16_t immediate = opcode == 0x81 ? F16 : (uint16_t)(int16_t)F8S;
+                        const int32_t mask = ~0xffff | immediate;
+                        if (mask != -1 && mask >= -2048) {
+                            ANDI(target, target, mask);
+                        } else if (mask != -1) {
+                            MOV64x(x2, mask);
+                            AND(target, target, x2);
+                        }
+                        break;
+                    }
                     GETEW(x1, (opcode == 0x81) ? 2 : 1);
                     if (opcode == 0x81)
                         u64 = F16;
@@ -631,6 +682,17 @@ uintptr_t dynarec64_66(dynarec_rv64_t* dyn, uintptr_t addr, uintptr_t ip, int ni
                         INST_NAME("XOR Ew, Ib");
                     }
                     SETFLAGS(X_ALL, SF_SET_PENDING, NAT_FLAGS_FUSION);
+                    if (MODREG && !dyn->insts[ninst].x64.gen_flags && !dyn->insts[ninst].nat_flags_fusion) {
+                        const int target = TO_NAT((nextop & 7) + (rex.b << 3));
+                        const uint16_t mask = opcode == 0x81 ? F16 : (uint16_t)(int16_t)F8S;
+                        if (mask && mask <= 2047) {
+                            XORI(target, target, mask);
+                        } else if (mask) {
+                            MOV32w(x2, mask);
+                            XOR(target, target, x2);
+                        }
+                        break;
+                    }
                     GETEW(x1, (opcode == 0x81) ? 2 : 1);
                     if (opcode == 0x81)
                         u64 = F16;
