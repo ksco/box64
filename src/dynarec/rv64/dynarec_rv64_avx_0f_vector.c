@@ -580,6 +580,38 @@ uintptr_t dynarec64_AVX_0F_vector(dynarec_rv64_t* dyn, uintptr_t addr, uintptr_t
                 PUTGY_vector(v0, VECTOR_SEW64);
                 break;
             }
+            if (u8 == 0x4e && q0 == q1) {
+                SET_AVX_VECTOR_WIDTH(x1, VECTOR_SEW64);
+                int indices = vpu_get_scratch(dyn);
+                int result = v0 == q0 ? vpu_get_scratch(dyn) : v0;
+                VID_V(indices, VECTOR_UNMASKED);
+                VXOR_VI(indices, indices, 1, VECTOR_UNMASKED);
+                VRGATHER_VV(result, q0, indices, VECTOR_UNMASKED);
+                PUTGY_vector(result, VECTOR_SEW64);
+                break;
+            }
+            if (u8 == 0x44 || u8 == 0x4e) {
+                SET_AVX_VECTOR_WIDTH(x1, VECTOR_SEW64);
+                int result = v0 == q1 ? vpu_get_scratch(dyn) : v0;
+                if (u8 == 0x4e) {
+                    VSLIDEDOWN_VI(result, q0, 1, VECTOR_UNMASKED);
+                } else if (result != q0) {
+                    VMV_V_V(result, q0);
+                }
+                if (vex.l) VECTOR_LOAD_VMASK(0xa, x4);
+                VSLIDEUP_VI(result, q1, 1, vex.l ? VECTOR_MASKED : VECTOR_UNMASKED);
+                PUTGY_vector(result, VECTOR_SEW64);
+                break;
+            }
+            if (u8 == 0xee) {
+                SET_AVX_VECTOR_WIDTH(x1, VECTOR_SEW64);
+                int result = (v0 == q0 && q0 != q1) ? vpu_get_scratch(dyn) : v0;
+                if (result != q1) VMV_V_V(result, q1);
+                VECTOR_LOAD_VMASK(0x5, x4);
+                VSLIDEDOWN_VI(result, q0, 1, VECTOR_MASKED);
+                PUTGY_vector(result, VECTOR_SEW64);
+                break;
+            }
             int result = (v0 == q0 || v0 == q1) ? vpu_get_scratch(dyn) : v0;
             int first = u8 & 3;
             if (q0 == q1 && u8 == first * 0x55) {

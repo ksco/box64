@@ -1311,6 +1311,16 @@ uintptr_t dynarec64_0F_vector(dynarec_rv64_t* dyn, uintptr_t addr, uintptr_t ip,
                 VSLIDEUP_VI_SAFE(v0, v1, 1, VECTOR_UNMASKED);
                 break;
             }
+            if (u8 == 0x4e) {
+                int high_source = v1;
+                if (v0 == v1) {
+                    high_source = vpu_get_scratch(dyn);
+                    VMV_V_V(high_source, v1);
+                }
+                VSLIDEDOWN_VI(v0, v0, 2, VECTOR_UNMASKED);
+                VSLIDEUP_VI(v0, high_source, 2, VECTOR_UNMASKED);
+                break;
+            }
             int first = u8 & 3;
             if (v0 == v1 && u8 == first * 0x55) {
                 int result = vpu_get_scratch(dyn);
