@@ -1109,7 +1109,7 @@ void emit_ror8c(dynarec_rv64_t* dyn, int ninst, int s1, uint32_t c, int s3, int 
     if (dyn->insts[ninst].nat_flags_fusion) NAT_FLAGS_OPS(s1, xZR, s3, xZR);
 }
 
-// emit ROL8 instruction, from s1, count in s2 (already masked to 0x1f, non-zero), store result in s1 using s3 and s4 as scratch
+// emit ROL8 instruction, from s1, count in s2 (masked to 7), store result in s1 using s3 and s4 as scratch
 void emit_rol8(dynarec_rv64_t* dyn, int ninst, int s1, int s2, int s3, int s4)
 {
     SET_DFNONE();
@@ -1124,10 +1124,9 @@ void emit_rol8(dynarec_rv64_t* dyn, int ninst, int s1, int s2, int s3, int s4)
         OR(xFlags, xFlags, s3);
     }
 
-    ANDI(s4, s2, 7);
-    SLL(s3, s1, s4);
-    SUB(s4, xZR, s4);
-    ADDI(s4, s4, 8);
+    ADDI(s4, xZR, 8);
+    SLL(s3, s1, s2);
+    SUB(s4, s4, s2);
     SRL(s1, s1, s4);
     OR(s1, s1, s3);
     ANDI(s1, s1, 0xff);
@@ -1140,7 +1139,7 @@ void emit_rol8(dynarec_rv64_t* dyn, int ninst, int s1, int s2, int s3, int s4)
     if (dyn->insts[ninst].nat_flags_fusion) NAT_FLAGS_OPS(s1, xZR, s3, xZR);
 }
 
-// emit ROR8 instruction, from s1, count in s2 (already masked to 0x1f, non-zero), store result in s1 using s3 and s4 as scratch
+// emit ROR8 instruction, from s1, count in s2 (masked to 7), store result in s1 using s3 and s4 as scratch
 void emit_ror8(dynarec_rv64_t* dyn, int ninst, int s1, int s2, int s3, int s4)
 {
     SET_DFNONE();
@@ -1154,10 +1153,11 @@ void emit_ror8(dynarec_rv64_t* dyn, int ninst, int s1, int s2, int s3, int s4)
         OR(xFlags, xFlags, s3);
     }
 
-    ANDI(s4, s2, 7);
-    SLLI(s3, s1, 8);
-    OR(s3, s3, s1);
-    SRL(s1, s3, s4);
+    ADDI(s4, xZR, 8);
+    SRL(s3, s1, s2);
+    SUB(s4, s4, s2);
+    SLL(s1, s1, s4);
+    OR(s1, s1, s3);
     ANDI(s1, s1, 0xff);
 
     IFX (X_CF) {
@@ -1380,9 +1380,11 @@ void emit_ror16(dynarec_rv64_t* dyn, int ninst, int s1, int s2, int s3, int s4)
     }
 
     ANDI(s4, s2, 15);
-    SLLI(s3, s1, 16);
-    OR(s3, s3, s1);
-    SRL(s1, s3, s4);
+    SRL(s3, s1, s4);
+    NEG(s4, s4);
+    ADDI(s4, s4, 16);
+    SLL(s1, s1, s4);
+    OR(s1, s1, s3);
     ZEXTH(s1, s1);
 
     IFX (X_CF) {
