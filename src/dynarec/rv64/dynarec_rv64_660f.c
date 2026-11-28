@@ -1587,7 +1587,9 @@ uintptr_t dynarec64_660F(dynarec_rv64_t* dyn, uintptr_t addr, uintptr_t ip, int 
                     }
                     break;
                 case 5:
-                    INST_NAME("BTS Ew, Ib");
+                case 6: {
+                    const int set_bit = ((nextop >> 3) & 7) == 5;
+                    INST_NAME(set_bit ? "BTS Ew, Ib" : "BTR Ew, Ib");
                     if (!BOX64DRENV(dynarec_safeflags)) {
                         SETFLAGS(X_ALL & ~X_ZF, SF_SUBSET, NAT_FLAGS_NOFUSION);
                     } else {
@@ -1596,70 +1598,46 @@ uintptr_t dynarec64_660F(dynarec_rv64_t* dyn, uintptr_t addr, uintptr_t ip, int 
                     SET_DFNONE();
                     GETEW(x1, 1);
                     u8 = F8;
-                    u8 &= (rex.w ? 0x3f : 0x0f);
-                    if (cpuext.zbs) {
-                        IFX (X_CF) {
-                            BEXTI(x6, ed, u8); // F_CF is 1
+                    u8 &= 0x0f;
+                    IFX (X_CF) {
+                        BEXTI(x4, ed, u8);
+                        if (!wb1) {
                             ANDI(xFlags, xFlags, ~1);
-                            OR(xFlags, xFlags, x6);
+                            OR(xFlags, xFlags, x4);
                         }
-                        BSETI_(ed, ed, u8);
-                    } else {
-                        IFX (X_CF) ORI(xFlags, xFlags, 1 << F_CF);
-                        if (u8 <= 10) {
-                            ANDI(x6, ed, 1 << u8);
-                            BNE_MARK(x6, xZR);
-                            IFX (X_CF) ANDI(xFlags, xFlags, ~(1 << F_CF));
-                            XORI(ed, ed, 1 << u8);
+                    }
+                    if (cpuext.zbs) {
+                        if (set_bit) {
+                            BSETI_(ed, ed, u8);
                         } else {
-                            ORI(x6, xZR, 1);
-                            SLLI(x6, x6, u8);
-                            AND(x4, ed, x6);
-                            BNE_MARK(x4, xZR);
-                            IFX (X_CF) ANDI(xFlags, xFlags, ~(1 << F_CF));
-                            XOR(ed, ed, x6);
+                            BCLI(ed, ed, u8);
+                        }
+                    } else {
+                        const uint64_t bit_mask = 1ULL << u8;
+                        if (u8 <= 10) {
+                            if (set_bit) {
+                                ORI(ed, ed, bit_mask);
+                            } else {
+                                ANDI(ed, ed, ~bit_mask);
+                            }
+                        } else {
+                            MOV64x(x6, set_bit ? bit_mask : ~bit_mask);
+                            if (set_bit) {
+                                OR(ed, ed, x6);
+                            } else {
+                                AND(ed, ed, x6);
+                            }
                         }
                     }
                     EWBACK;
-                    MARK;
-                    break;
-                case 6:
-                    INST_NAME("BTR Ew, Ib");
-                    if (!BOX64DRENV(dynarec_safeflags)) {
-                        SETFLAGS(X_ALL & ~X_ZF, SF_SUBSET, NAT_FLAGS_NOFUSION);
-                    } else {
-                        SETFLAGS(X_CF, SF_SUBSET, NAT_FLAGS_NOFUSION);
-                    }
-                    SET_DFNONE();
-                    GETEW(x1, 1);
-                    u8 = F8;
-                    u8 &= (rex.w ? 0x3f : 0x0f);
-                    if (cpuext.zbs) {
+                    if (wb1) {
                         IFX (X_CF) {
-                            BEXTI(x6, ed, u8); // F_CF is 1
                             ANDI(xFlags, xFlags, ~1);
-                            OR(xFlags, xFlags, x6);
-                        }
-                        BCLI(ed, ed, u8);
-                    } else {
-                        IFX (X_CF) ANDI(xFlags, xFlags, ~(1 << F_CF));
-                        if (u8 <= 10) {
-                            ANDI(x6, ed, 1 << u8);
-                            BEQ_MARK(x6, xZR);
-                            IFX (X_CF) ORI(xFlags, xFlags, 1 << F_CF);
-                            XORI(ed, ed, 1 << u8);
-                        } else {
-                            ORI(x6, xZR, 1);
-                            SLLI(x6, x6, u8);
-                            AND(x6, ed, x6);
-                            BEQ_MARK(x6, xZR);
-                            IFX (X_CF) ORI(xFlags, xFlags, 1 << F_CF);
-                            XOR(ed, ed, x6);
+                            OR(xFlags, xFlags, x4);
                         }
                     }
-                    MARK;
-                    EWBACK;
                     break;
+                }
                 case 7:
                     INST_NAME("BTC Ew, Ib");
                     if (!BOX64DRENV(dynarec_safeflags)) {

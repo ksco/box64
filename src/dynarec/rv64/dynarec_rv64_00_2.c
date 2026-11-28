@@ -1183,8 +1183,7 @@ uintptr_t dynarec64_00_2(dynarec_rv64_t* dyn, uintptr_t addr, uintptr_t ip, int 
             SETFLAGS(X_ALL, SF_SET_PENDING, NAT_FLAGS_FUSION);
             i64 = F32S;
             MARKREGs(xRAX);
-            MOV64xw(x2, i64);
-            emit_test32(dyn, ninst, rex, xRAX, x2, x3, x4, x5);
+            emit_test32c(dyn, ninst, rex, xRAX, i64, x3, x4, x5);
             break;
         case 0xAA:
             UP32_READ(xRDI);
