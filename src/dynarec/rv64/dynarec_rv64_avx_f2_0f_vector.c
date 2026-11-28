@@ -181,8 +181,7 @@ uintptr_t dynarec64_AVX_F2_0F_vector(dynarec_rv64_t* dyn, uintptr_t addr, uintpt
         case 0x2A:
             INST_NAME("VCVTSI2SD Gx, Vx, Ed");
             nextop = F8;
-            q0 = VREG(vex.v);
-            simd_load_reg(dyn, ninst, x1, q0, vex.v, 16, VECTOR_SEW64);
+            GETG;
             if (MODREG) {
                 ed = TO_NAT((nextop & 7) + (rex.b << 3));
                 MARKREGs(ed);
@@ -200,14 +199,8 @@ uintptr_t dynarec64_AVX_F2_0F_vector(dynarec_rv64_t* dyn, uintptr_t addr, uintpt
                 FCVTDL(d0, ed, RD_DYN);
             else
                 FCVTDW(d0, ed, RD_DYN);
-            GETGY_empty_vector(v0);
-            if (v0 != q0) {
-                simd_set_width(dyn, ninst, x1, VECTOR_SEW64, 16);
-                VMV_V_V(v0, q0);
-            }
-            SET_SCALAR_FP_WIDTH(x1, VECTOR_SEW64);
+            v0 = simd_seed_scalar(dyn, ninst, x1, gd, vex.v, VECTOR_SEW64);
             VFMV_S_F(v0, d0);
-            simd_store_reg(dyn, ninst, x1, v0, gd, 16, VECTOR_SEW64);
             break;
         case 0x2C:
             INST_NAME("VCVTTSD2SI Gd, Ex");

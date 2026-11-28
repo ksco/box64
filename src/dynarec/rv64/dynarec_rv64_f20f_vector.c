@@ -105,88 +105,44 @@ uintptr_t dynarec64_F20F_vector(dynarec_rv64_t* dyn, uintptr_t addr, uintptr_t i
         case 0x2A:
             INST_NAME("CVTSI2SD Gx, Ed");
             nextop = F8;
-            if (rex.w) {
-                SET_ELEMENT_WIDTH(x3, VECTOR_SEW64);
-                GETGX_vector(v0, 1, VECTOR_SEW64);
-                GETED(0);
-            } else {
-                SET_ELEMENT_WIDTH(x3, VECTOR_SEW32);
-                GETGX_vector(v0, 1, VECTOR_SEW32);
-                GETED(0);
-            }
-            if (rex.w) {
-                FCVTDL(v0, ed, BOX64ENV(dynarec_fastround) <= 1 ? RD_DYN : RD_RNE);
-            } else {
-                FCVTDW(v0, ed, BOX64ENV(dynarec_fastround) <= 1 ? RD_DYN : RD_RNE);
-                SET_ELEMENT_WIDTH(x3, VECTOR_SEW64);
-            }
+            GETG;
+            GETED(0);
+            d0 = fpu_get_scratch(dyn);
+            if (rex.w)
+                FCVTDL(d0, ed, BOX64ENV(dynarec_fastround) <= 1 ? RD_DYN : RD_RNE);
+            else
+                FCVTDW(d0, ed, BOX64ENV(dynarec_fastround) <= 1 ? RD_DYN : RD_RNE);
             if (cpuext.xtheadvector) {
+                v0 = simd_get_reg(dyn, ninst, x1, gd, 1, VECTOR_SEW64);
                 v1 = vpu_get_scratch(dyn);
-                VFMV_S_F(v1, v0);
+                VFMV_S_F(v1, d0);
                 VECTOR_LOAD_VMASK(0b01, x4);
                 VMERGE_VVM(v0, v0, v1);
             } else {
-                FMVXD(x4, v0);
-                VMV_S_X(v0, x4);
+                v0 = simd_access(dyn, ninst, x1, gd, 0, 0);
+                SET_ELEMENT_WIDTH(x3, VECTOR_SEW64);
+                simd_commit(dyn, ninst, gd, SIMD_LO64, 0);
+                VFMV_S_F(v0, d0);
             }
             break;
         case 0x2C:
-            INST_NAME("CVTTSD2SI Gd, Ex");
-            nextop = F8;
-            GETGDd;
-            SET_ELEMENT_WIDTH(x1, VECTOR_SEW64);
-            if (MODREG) {
-                v0 = simd_get_reg(dyn, ninst, x1, (nextop & 7) + (rex.b << 3), 0, dyn->vector_eew);
-            } else {
-                SMREAD();
-                v0 = vpu_get_scratch(dyn);
-                addr = geted(dyn, addr, ninst, nextop, &ed, x1, x2, &fixedaddress, rex, NULL, 1, 0);
-                LD(x4, ed, fixedaddress);
-                VMV_S_X(v0, x4);
-            }
-            if (BOX64ENV(dynarec_fastround)) {
-                VFMV_F_S(v0, v0);
-                FCVTLDxw(gd, v0, RD_RTZ);
-                if (!rex.w) ZEROUP(gd);
-            } else {
-                VFMV_F_S(v0, v0);
-                FSFLAGSI(0); // // reset all bits
-                FCVTLDxw(gd, v0, RD_RTZ);
-                if (!rex.w) ZEROUP(gd);
-                FRFLAGS(x5); // get back FPSR to check the IOC bit
-                ANDI(x5, x5, (1 << FR_NV) | (1 << FR_OF));
-                CBZ_NEXT(x5);
-                if (rex.w) {
-                    MOV64x(gd, 0x8000000000000000LL);
-                } else {
-                    MOV32w(gd, 0x80000000);
-                }
-            }
-            break;
         case 0x2D:
-            INST_NAME("CVTSD2SI Gd, Ex");
+            INST_NAME(opcode == 0x2C ? "CVTTSD2SI Gd, Ex" : "CVTSD2SI Gd, Ex");
             nextop = F8;
             GETGDd;
-            SET_ELEMENT_WIDTH(x1, VECTOR_SEW64);
             if (MODREG) {
-                v0 = simd_get_reg(dyn, ninst, x1, (nextop & 7) + (rex.b << 3), 0, dyn->vector_eew);
+                SET_ELEMENT_WIDTH(x1, VECTOR_SEW64);
+                v0 = simd_get_reg(dyn, ninst, x1, (nextop & 7) + (rex.b << 3), 0, VECTOR_SEW64);
+                d0 = fpu_get_scratch(dyn);
+                VFMV_F_S(d0, v0);
             } else {
-                SMREAD();
-                v0 = vpu_get_scratch(dyn);
-                addr = geted(dyn, addr, ninst, nextop, &ed, x1, x2, &fixedaddress, rex, NULL, 1, 0);
-                LD(x4, ed, fixedaddress);
-                VMV_S_X(v0, x4);
+                GETEXSD(d0, 0);
             }
-            if (BOX64ENV(dynarec_fastround)) {
-                VFMV_F_S(v0, v0);
-                FCVTLDxw(gd, v0, RD_DYN);
-                if (!rex.w) ZEROUP(gd);
-            } else {
-                VFMV_F_S(v0, v0);
-                FSFLAGSI(0); // // reset all bits
-                FCVTLDxw(gd, v0, RD_DYN);
-                if (!rex.w) ZEROUP(gd);
-                FRFLAGS(x5); // get back FPSR to check the IOC bit
+            if (!BOX64ENV(dynarec_fastround)) FSFLAGSI(0);
+            FCVTLDxw(gd, d0, opcode == 0x2C ? RD_RTZ : RD_DYN);
+            if (!rex.w) ZEROUP(gd);
+            if (!BOX64ENV(dynarec_fastround)) {
+                FRFLAGS(x5);
                 ANDI(x5, x5, (1 << FR_NV) | (1 << FR_OF));
                 CBZ_NEXT(x5);
                 if (rex.w) {

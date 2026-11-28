@@ -117,28 +117,24 @@ uintptr_t dynarec64_F30F_vector(dynarec_rv64_t* dyn, uintptr_t addr, uintptr_t i
         case 0x2A:
             INST_NAME("CVTSI2SS Gx, Ed");
             nextop = F8;
-            if (rex.w) {
-                SET_ELEMENT_WIDTH(x3, VECTOR_SEW64);
-                GETGX_vector(v0, 1, VECTOR_SEW64);
-                GETED(0);
-            } else {
-                SET_ELEMENT_WIDTH(x3, VECTOR_SEW32);
-                GETGX_vector(v0, 1, VECTOR_SEW32);
-                GETED(0);
-            }
-            if (rex.w) {
-                FCVTSL(v0, ed, BOX64ENV(dynarec_fastround) <= 1 ? RD_DYN : RD_RNE);
-                SET_ELEMENT_WIDTH(x3, VECTOR_SEW32);
-            } else {
-                FCVTSW(v0, ed, BOX64ENV(dynarec_fastround) <= 1 ? RD_DYN : RD_RNE);
-            }
+            GETG;
+            GETED(0);
+            d0 = fpu_get_scratch(dyn);
+            if (rex.w)
+                FCVTSL(d0, ed, BOX64ENV(dynarec_fastround) <= 1 ? RD_DYN : RD_RNE);
+            else
+                FCVTSW(d0, ed, BOX64ENV(dynarec_fastround) <= 1 ? RD_DYN : RD_RNE);
             if (cpuext.xtheadvector) {
+                v0 = simd_get_reg(dyn, ninst, x1, gd, 1, VECTOR_SEW32);
                 v1 = vpu_get_scratch(dyn);
-                VFMV_S_F(v1, v0);
+                VFMV_S_F(v1, d0);
                 VECTOR_LOAD_VMASK(0b0001, x4);
                 VMERGE_VVM(v0, v0, v1); // implies VMASK
             } else {
-                VFMV_S_F(v0, v0);
+                v0 = simd_access(dyn, ninst, x1, gd, 0, 0);
+                SET_ELEMENT_WIDTH(x3, VECTOR_SEW32);
+                simd_commit(dyn, ninst, gd, SIMD_LO32, 0);
+                VFMV_S_F(v0, d0);
             }
             break;
         case 0x2C:

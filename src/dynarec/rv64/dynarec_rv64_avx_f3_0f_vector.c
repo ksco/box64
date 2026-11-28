@@ -213,8 +213,7 @@ uintptr_t dynarec64_AVX_F3_0F_vector(dynarec_rv64_t* dyn, uintptr_t addr, uintpt
         case 0x2A:
             INST_NAME("VCVTSI2SS Gx, Vx, Ed");
             nextop = F8;
-            q0 = VREG(vex.v);
-            simd_load_reg(dyn, ninst, x1, q0, vex.v, 16, VECTOR_SEW32);
+            gd = ((nextop >> 3) & 7) + (rex.r << 3);
             if (MODREG) {
                 ed = TO_NAT((nextop & 7) + (rex.b << 3));
                 MARKREGs(ed);
@@ -227,76 +226,17 @@ uintptr_t dynarec64_AVX_F3_0F_vector(dynarec_rv64_t* dyn, uintptr_t addr, uintpt
                     LW(x4, ed, fixedaddress);
                 ed = x4;
             }
-            LW(x5, xEmu, offsetof(x64emu_t, mxcsr));
-            SRLI(x5, x5, 13);
-            ANDI(x5, x5, 3);
             d0 = fpu_get_scratch(dyn);
-            BEQZ_MARK(x5);
-            ADDI(x6, xZR, 3);
-            BEQ_MARK2(x5, x6);
-            ADDI(x6, xZR, 2);
-            BEQ_MARK3(x5, x6);
             if (rex.w)
-                FCVTSL(d0, ed, RD_RDN);
+                FCVTSL(d0, ed, RD_DYN);
             else
-                FCVTSW(d0, ed, RD_RDN);
-            B_MARK4_nocond;
-            MARK;
-            if (rex.w)
-                FCVTSL(d0, ed, RD_RNE);
-            else
-                FCVTSW(d0, ed, RD_RNE);
-            B_MARK4_nocond;
-            MARK2;
-            if (rex.w)
-                FCVTSL(d0, ed, RD_RTZ);
-            else
-                FCVTSW(d0, ed, RD_RTZ);
-            B_MARK4_nocond;
-            MARK3;
-            if (rex.w)
-                FCVTSL(d0, ed, RD_RUP);
-            else
-                FCVTSW(d0, ed, RD_RUP);
-            MARK4;
-            GETGY_empty_vector(v0);
-            if (v0 != q0) {
-                simd_set_width(dyn, ninst, x1, VECTOR_SEW32, 16);
-                VMV_V_V(v0, q0);
-            }
-            SET_SCALAR_FP_WIDTH(x1, VECTOR_SEW32);
+                FCVTSW(d0, ed, RD_DYN);
+            v0 = simd_seed_scalar(dyn, ninst, x1, gd, vex.v, VECTOR_SEW32);
             VFMV_S_F(v0, d0);
-            simd_store_reg(dyn, ninst, x1, v0, gd, 16, VECTOR_SEW32);
             break;
         case 0x2C:
-            INST_NAME("VCVTTSS2SI Gd, Ex");
-            nextop = F8;
-            GETGDd;
-            d0 = fpu_get_scratch(dyn);
-            if (MODREG) {
-                q0 = VREG((nextop & 7) + (rex.b << 3));
-                simd_load_reg(dyn, ninst, x1, q0, (nextop & 7) + (rex.b << 3), 16, VECTOR_SEW32);
-                VFMV_F_S(d0, q0);
-            } else {
-                SMREAD();
-                addr = geted(dyn, addr, ninst, nextop, &ed, x2, x3, &fixedaddress, rex, NULL, 0, 0);
-                FLW(d0, ed, fixedaddress);
-            }
-            if (!BOX64ENV(dynarec_fastround)) FSFLAGSI(0);
-            FCVTSxw(gd, d0, RD_RTZ);
-            if (!rex.w) ZEROUP(gd);
-            if (!BOX64ENV(dynarec_fastround)) {
-                FRFLAGS(x5);
-                ANDI(x5, x5, (1 << FR_NV) | (1 << FR_OF));
-                CBZ_NEXT(x5);
-                if (rex.w)
-                    MOV64x(gd, 0x8000000000000000LL);
-                else
-                    MOV32w(gd, 0x80000000);
-            }
-            break;
         case 0x2D:
-            INST_NAME("VCVTSS2SI Gd, Ex");
+            INST_NAME(opcode == 0x2C ? "VCVTTSS2SI Gd, Ex" : "VCVTSS2SI Gd, Ex");
             nextop = F8;
             GETGDd;
             d0 = fpu_get_scratch(dyn);
@@ -310,25 +250,7 @@ uintptr_t dynarec64_AVX_F3_0F_vector(dynarec_rv64_t* dyn, uintptr_t addr, uintpt
                 FLW(d0, ed, fixedaddress);
             }
             if (!BOX64ENV(dynarec_fastround)) FSFLAGSI(0);
-            LW(x5, xEmu, offsetof(x64emu_t, mxcsr));
-            SRLI(x5, x5, 13);
-            ANDI(x5, x5, 3);
-            BEQZ_MARK(x5);
-            ADDI(x6, xZR, 3);
-            BEQ_MARK2(x5, x6);
-            ADDI(x6, xZR, 2);
-            BEQ_MARK3(x5, x6);
-            FCVTSxw(gd, d0, RD_RDN);
-            B_MARK4_nocond;
-            MARK;
-            FCVTSxw(gd, d0, RD_RNE);
-            B_MARK4_nocond;
-            MARK2;
-            FCVTSxw(gd, d0, RD_RTZ);
-            B_MARK4_nocond;
-            MARK3;
-            FCVTSxw(gd, d0, RD_RUP);
-            MARK4;
+            FCVTSxw(gd, d0, opcode == 0x2C ? RD_RTZ : RD_DYN);
             if (!rex.w) ZEROUP(gd);
             if (!BOX64ENV(dynarec_fastround)) {
                 FRFLAGS(x5);
