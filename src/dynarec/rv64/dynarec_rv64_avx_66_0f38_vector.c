@@ -1177,6 +1177,7 @@ uintptr_t dynarec64_AVX_66_0F38_vector(dynarec_rv64_t* dyn, uintptr_t addr, uint
         case 0x13: {
             INST_NAME("VCVTPH2PS Gx, Ex");
             nextop = F8;
+            int half_width = 8 << vex.l;
             if (MODREG) {
                 ed = (nextop & 7) + (rex.b << 3);
                 v1 = simd_access(dyn, ninst, x1, ed, vex.l ? SIMD_XMM : SIMD_LO64, 0);
@@ -1184,7 +1185,8 @@ uintptr_t dynarec64_AVX_66_0F38_vector(dynarec_rv64_t* dyn, uintptr_t addr, uint
                 SMREAD();
                 addr = geted(dyn, addr, ninst, nextop, &ed, x2, x3, &fixedaddress, rex, NULL, 0, 0);
                 v1 = vpu_get_scratch(dyn);
-                rvv_set_vl_for_width(dyn, ninst, x1, VECTOR_SEW16, VECTOR_LMUL1, vex.l ? 16 : 8);
+                int half_grouping = cpuext.zvfh ? VECTOR_LMULF2 : VECTOR_LMUL1;
+                rvv_set_vl_for_width(dyn, ninst, x1, VECTOR_SEW16, half_grouping, half_width);
                 VLE16_V(v1, ed, VECTOR_UNMASKED, VECTOR_NFIELD1);
             }
             GETGY_empty_vector(v0);
@@ -1217,17 +1219,15 @@ uintptr_t dynarec64_AVX_66_0F38_vector(dynarec_rv64_t* dyn, uintptr_t addr, uint
                 PUTGY_vector(v0, VECTOR_SEW32);
                 break;
             }
-            rvv_set_vl_for_width(dyn, ninst, x1, VECTOR_SEW16, VECTOR_LMUL1, vex.l ? 16 : 8);
-            int expanded = vpu_get_scratch_lmul(dyn, VECTOR_LMUL2);
+            rvv_set_vl_for_width(dyn, ninst, x1, VECTOR_SEW16, VECTOR_LMULF2, half_width);
+            int expanded = v0 == v1 ? vpu_get_scratch(dyn) : v0;
             int payload = vpu_get_scratch(dyn);
-            VSLL_VI(payload, v1, 1, VECTOR_UNMASKED);
-            MOV32w(x4, 0xf800);
-            VMSGTU_VX(VMASK, payload, x4, VECTOR_UNMASKED);
             VFWCVT_F_F_V(expanded, v1, VECTOR_UNMASKED);
             SET_AVX_VECTOR_WIDTH(x1, VECTOR_SEW32);
             VSEXT_VF2(payload, v1, VECTOR_UNMASKED);
             VSLL_VI(payload, payload, 13, VECTOR_UNMASKED);
             MOV32w(x4, 0x70400000);
+            VMFNE_VV(VMASK, expanded, expanded, VECTOR_UNMASKED);
             VOR_VX(expanded, payload, x4, VECTOR_MASKED);
             PUTGY_vector(expanded, VECTOR_SEW32);
             break;

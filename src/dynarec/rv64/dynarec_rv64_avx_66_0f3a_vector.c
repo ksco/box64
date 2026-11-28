@@ -311,11 +311,6 @@ uintptr_t dynarec64_AVX_66_0F3A_vector(dynarec_rv64_t* dyn, uintptr_t addr, uint
             nextop = F8;
             GETG;
             int source = simd_access(dyn, ninst, x1, gd, vex.l ? SIMD_YMM : SIMD_XMM, 0);
-            if (source & 1) {
-                int aligned = vpu_get_scratch_lmul(dyn, VECTOR_LMUL2);
-                VMV1R_V(aligned, source);
-                source = aligned;
-            }
             int destination = -1;
             if (MODREG) {
                 ed = (nextop & 7) + (rex.b << 3);
@@ -324,7 +319,7 @@ uintptr_t dynarec64_AVX_66_0F3A_vector(dynarec_rv64_t* dyn, uintptr_t addr, uint
                 addr = geted(dyn, addr, ninst, nextop, &ed, x2, x3, &fixedaddress, rex, NULL, 0, 1);
             }
             u8 = F8;
-            int halves = destination < 0 || destination == source || destination == source + 1 ? vpu_get_scratch(dyn) : destination;
+            int halves = destination < 0 ? vpu_get_scratch(dyn) : destination;
             int sign = vpu_get_scratch(dyn);
             int payload = vpu_get_scratch(dyn);
             if (u8 & 4) {
@@ -344,18 +339,17 @@ uintptr_t dynarec64_AVX_66_0F3A_vector(dynarec_rv64_t* dyn, uintptr_t addr, uint
             }
             SET_AVX_VECTOR_WIDTH(x1, VECTOR_SEW32);
             VMFNE_VV(VMASK, source, source, VECTOR_UNMASKED);
-            simd_set_width(dyn, ninst, x1, VECTOR_SEW16, 8 << vex.l);
-            VFNCVT_F_F_W(halves, source, VECTOR_UNMASKED);
-            CSRRW(xZR, x6, 0x003);
+            rvv_set_vl_for_width(dyn, ninst, x1, VECTOR_SEW16, VECTOR_LMULF2, 8 << vex.l);
             VNSRA_WI(sign, source, 31, VECTOR_UNMASKED);
             MOV32w(x4, 0x7fff);
             VOR_VX(sign, sign, x4, VECTOR_UNMASKED);
             VNSRL_WI(payload, source, 13, VECTOR_UNMASKED);
             MOV32w(x4, 0x0200);
             VOR_VX(payload, payload, x4, VECTOR_UNMASKED);
+            VFNCVT_F_F_W(halves, source, VECTOR_UNMASKED);
+            CSRRW(xZR, x6, 0x003);
             VAND_VV(halves, payload, sign, VECTOR_MASKED);
             if (MODREG) {
-                if (destination != halves) VMV_V_V(destination, halves);
                 simd_commit(dyn, ninst, ed, vex.l ? SIMD_XMM : SIMD_LO64, (vex.l ? 0 : SIMD_HI64) | SIMD_HI128);
             } else {
                 VSE16_V(halves, ed, VECTOR_UNMASKED, VECTOR_NFIELD1);
