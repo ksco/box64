@@ -1534,8 +1534,25 @@ uintptr_t dynarec64_660F(dynarec_la64_t* dyn, uintptr_t addr, uintptr_t ip, int 
                 v1 = fpu_get_scratch(dyn);
                 VOR_V(v1, v0, v0);
             }
+            if (!BOX64ENV(dynarec_fastround))
+                MOVGR2FCSR(FCSR2, xZR); // reset cause and flags
             VFTINT_W_S(v0, v1);
             if (!BOX64ENV(dynarec_fastround)) {
+                MOVFCSR2GR(x5, FCSR2); // get back cause
+                MOV32w(x3, (1 << FR_V) | (1 << FR_O));
+                AND(x4, x5, x3);
+                BEQZ_MARK2(x4);
+                LD_WU(x4, xEmu, offsetof(x64emu_t, mxcsr));
+                ORI(x4, x4, 0x1); // IE flag
+                ST_W(x4, xEmu, offsetof(x64emu_t, mxcsr));
+                MARK2;
+                MOV32w(x3, 1 << FR_I);
+                AND(x4, x5, x3);
+                BEQZ_MARK(x4);
+                LD_WU(x4, xEmu, offsetof(x64emu_t, mxcsr));
+                ORI(x4, x4, 0x20); // PE flag
+                ST_W(x4, xEmu, offsetof(x64emu_t, mxcsr));
+                MARK;
                 q0 = fpu_get_scratch(dyn);
                 q1 = fpu_get_scratch(dyn);
                 d1 = fpu_get_scratch(dyn);

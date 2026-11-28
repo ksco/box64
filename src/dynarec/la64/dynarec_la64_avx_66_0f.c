@@ -364,6 +364,8 @@ uintptr_t dynarec64_AVX_66_0F(dynarec_la64_t* dyn, uintptr_t addr, uintptr_t ip,
             INST_NAME("VCVTPS2DQ Gx, Ex");
             nextop = F8;
             GETGY_empty_EY_xy(v0, v1, 0);
+            if (!BOX64ENV(dynarec_fastround))
+                MOVGR2FCSR(FCSR2, xZR); // reset cause and flags
             if (vex.l) {
                 if (!BOX64ENV(dynarec_fastround)) {
                     d1 = fpu_get_scratch(dyn);
@@ -371,6 +373,7 @@ uintptr_t dynarec64_AVX_66_0F(dynarec_la64_t* dyn, uintptr_t addr, uintptr_t ip,
                     q1 = fpu_get_scratch(dyn); // mask
                     d0 = fpu_get_scratch(dyn);
                     XVFTINT_W_S(d1, v1);
+                    MOVFCSR2GR(x5, FCSR2); // get back cause
                     XVLDI(q0, 0b1001110000000); // broadcast 0x80000000 to all
                     XVLDI(d0, (0b10011 << 8) | 0x4f);
                     XVFCMP_S(q1, d0, v1, cULE); // get Nan,+overflow mark
@@ -385,6 +388,7 @@ uintptr_t dynarec64_AVX_66_0F(dynarec_la64_t* dyn, uintptr_t addr, uintptr_t ip,
                     q1 = fpu_get_scratch(dyn); // mask
                     d0 = fpu_get_scratch(dyn);
                     VFTINT_W_S(d1, v1);
+                    MOVFCSR2GR(x5, FCSR2); // get back cause
                     VLDI(q0, 0b1001110000000); // broadcast 0x80000000 to all
                     VLDI(d0, (0b10011 << 8) | 0x4f);
                     VFCMP_S(q1, d0, v1, cULE); // get Nan,+overflow mark
@@ -392,6 +396,22 @@ uintptr_t dynarec64_AVX_66_0F(dynarec_la64_t* dyn, uintptr_t addr, uintptr_t ip,
                 } else {
                     VFTINT_W_S(v0, v1);
                 }
+            }
+            if (!BOX64ENV(dynarec_fastround)) {
+                MOV32w(x3, (1 << FR_V) | (1 << FR_O));
+                AND(x4, x5, x3);
+                BEQZ_MARK2(x4);
+                LD_WU(x4, xEmu, offsetof(x64emu_t, mxcsr));
+                ORI(x4, x4, 0x1); // IE flag
+                ST_W(x4, xEmu, offsetof(x64emu_t, mxcsr));
+                MARK2;
+                MOV32w(x3, 1 << FR_I);
+                AND(x4, x5, x3);
+                BEQZ_MARK(x4);
+                LD_WU(x4, xEmu, offsetof(x64emu_t, mxcsr));
+                ORI(x4, x4, 0x20); // PE flag
+                ST_W(x4, xEmu, offsetof(x64emu_t, mxcsr));
+                MARK;
             }
             break;
         case 0x5C:
